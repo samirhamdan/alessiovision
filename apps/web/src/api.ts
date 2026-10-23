@@ -41,6 +41,7 @@ export type Camera = {
   last_status_at: string | null;
   agent_last_seen_at: string | null;
   services: VisionService[];
+  history_until: Partial<Record<VisionService, string>>;
 };
 
 export type Site = { id: string; name: string; timezone: string };
@@ -118,6 +119,7 @@ export type EquipmentInput = {
   brand: string | null;
   model: string | null;
   serial_number: string | null;
+  asset_tag: string | null;
   site_id: string | null;
   camera_id: string | null;
   agent_id: string | null;
@@ -149,13 +151,9 @@ export type EquipmentSummary = {
 
 export type EquipmentList = { summary: EquipmentSummary; items: Equipment[] };
 
-export type Contract = {
+export type Contract = ContractInput & {
   id: string;
-  number: string;
-  starts_on: string;
-  ends_on: string | null;
   status: "active" | "ended";
-  notes: string | null;
   equipment_count: number;
   service_count: number;
   monthly_fee_cents: number;
@@ -175,6 +173,88 @@ export type OrganizationOverview = {
 
 export type Option = { id: string; name: string };
 export type OrganizationContext = { organization: Option; sites: Option[]; cameras: Option[]; agents: Option[] };
+
+export type Address = {
+  postal_code: string | null;
+  street: string | null;
+  street_number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+};
+
+export type ClientInput = {
+  name: string;
+  person_type: "pj" | "pf";
+  document: string;
+  legal_name: string;
+  state_registration: string | null;
+  email: string | null;
+  phone: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  address: Address;
+  notes: string | null;
+  status: "active" | "inactive";
+};
+
+export type Client = ClientInput & { id: string; document_formatted: string | null; created_at: string };
+
+export type ClientCreated = { client: Client; invite_token: string | null; owner_email: string | null };
+
+export type PlatformSite = { id: string; name: string; timezone: string; vision_planned: boolean; address: Address };
+
+export type PlatformCamera = {
+  id: string;
+  name: string;
+  site_id: string;
+  site_name: string;
+  agent_id: string;
+  agent_name: string;
+  source_ref: string;
+  analysis_fps: number;
+  services: VisionService[];
+};
+
+export type ContractInput = {
+  number: string;
+  starts_on: string;
+  ends_on: string | null;
+  signed_on: string | null;
+  term_months: number | null;
+  auto_renew: boolean;
+  billing_day: number | null;
+  payment_method: "boleto" | "pix" | "cartao" | "transferencia" | null;
+  adjustment_index: "ipca" | "igpm" | "none" | null;
+  notes: string | null;
+};
+
+export type ServiceChoice = {
+  service: VisionService;
+  mode: "contract" | "trial";
+  contract_id: string | null;
+  monthly_fee_cents: number | null;
+};
+
+export type CameraInstall = {
+  name: string;
+  site_id: string;
+  vision: { agent_id: string; source_ref: string; analysis_fps: number; services: ServiceChoice[] } | null;
+  equipment: {
+    ownership: Ownership;
+    contract_id: string | null;
+    brand: string | null;
+    model: string | null;
+    serial_number: string | null;
+    asset_tag: string | null;
+    reference_value_cents: number | null;
+    monthly_fee_cents: number | null;
+    delivered_on: string | null;
+    notes: string | null;
+  } | null;
+};
 
 export const SESSION_EXPIRED_EVENT = "alessio:session-expired";
 
@@ -265,8 +345,30 @@ export const api = {
     updateEquipment: (orgId: string, id: string, body: EquipmentInput) =>
       request<EquipmentList>("PATCH", `/api/v1/platform/organizations/${orgId}/equipment/${id}`, body),
     contracts: (orgId: string) => request<Contract[]>("GET", `/api/v1/platform/organizations/${orgId}/contracts`),
-    addContract: (orgId: string, body: { number: string; starts_on: string; ends_on: string | null; notes: string | null }) =>
+    addContract: (orgId: string, body: ContractInput) =>
       request<Contract[]>("POST", `/api/v1/platform/organizations/${orgId}/contracts`, body),
+    updateContract: (orgId: string, id: string, body: ContractInput) =>
+      request<Contract[]>("PUT", `/api/v1/platform/organizations/${orgId}/contracts/${id}`, body),
+    createClient: (body: ClientInput & { site_name: string; site_vision_planned: boolean; invite_contact: boolean }) =>
+      request<ClientCreated>("POST", "/api/v1/platform/organizations", body),
+    client: (orgId: string) => request<Client>("GET", `/api/v1/platform/organizations/${orgId}/profile`),
+    updateClient: (orgId: string, body: ClientInput) =>
+      request<Client>("PUT", `/api/v1/platform/organizations/${orgId}/profile`, body),
+    inviteOwner: (orgId: string, email: string, name: string) =>
+      request<ClientCreated>("POST", `/api/v1/platform/organizations/${orgId}/owner-invite`, { email, name }),
+    sites: (orgId: string) => request<PlatformSite[]>("GET", `/api/v1/platform/organizations/${orgId}/sites`),
+    addSite: (orgId: string, body: { name: string; timezone: string; vision_planned: boolean; address: Address }) =>
+      request<PlatformSite>("POST", `/api/v1/platform/organizations/${orgId}/sites`, body),
+    agents: (orgId: string) => request<AgentInfo[]>("GET", `/api/v1/platform/organizations/${orgId}/agents`),
+    addAgent: (orgId: string, name: string, siteId: string) =>
+      request<EnrollmentCode>("POST", `/api/v1/platform/organizations/${orgId}/agents`, { name, site_id: siteId }),
+    cameras: (orgId: string) => request<PlatformCamera[]>("GET", `/api/v1/platform/organizations/${orgId}/cameras`),
+    installCamera: (orgId: string, body: CameraInstall) =>
+      request<{ camera_id: string | null; equipment_id: string | null }>(
+        "POST",
+        `/api/v1/platform/organizations/${orgId}/cameras`,
+        body,
+      ),
     services: (orgId: string) => request<ServicesOverview>("GET", `/api/v1/platform/organizations/${orgId}/services`),
     contractService: (
       orgId: string,

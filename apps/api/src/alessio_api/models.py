@@ -43,22 +43,58 @@ def _created_at() -> Mapped[datetime]:
     return mapped_column(server_default=func.now())
 
 
-class Organization(Base):
+class AddressMixin:
+    """Endereço brasileiro. CEP só com dígitos; UF com duas letras."""
+
+    postal_code: Mapped[str | None] = mapped_column(String(8))
+    street: Mapped[str | None] = mapped_column(String(200))
+    street_number: Mapped[str | None] = mapped_column(String(20))
+    complement: Mapped[str | None] = mapped_column(String(100))
+    district: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str | None] = mapped_column(String(100))
+    state: Mapped[str | None] = mapped_column(String(2))
+
+
+class Organization(AddressMixin, Base):
+    """Cliente. ``name`` é o nome de exibição (nome fantasia).
+
+    Os dados cadastrais são preenchidos pela equipe Alessio; ``document`` (CNPJ ou
+    CPF, sem pontuação) é único entre os clientes.
+    """
+
     __tablename__ = "organizations"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="active")
+    person_type: Mapped[str] = mapped_column(String(2), default="pj", server_default="pj")
+    document: Mapped[str | None] = mapped_column(String(14), unique=True)
+    legal_name: Mapped[str | None] = mapped_column(String(200))
+    state_registration: Mapped[str | None] = mapped_column(String(30))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(20))
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    contact_email: Mapped[str | None] = mapped_column(String(320))
+    contact_phone: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(String(2000))
     created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime | None] = mapped_column(onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("person_type IN ('pj', 'pf')", name="organization_person_type"),
+        CheckConstraint("status IN ('active', 'inactive')", name="organization_status"),
+    )
 
 
-class Site(Base):
+class Site(AddressMixin, Base):
     __tablename__ = "sites"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = _org_fk()
     name: Mapped[str] = mapped_column(String(200))
     timezone: Mapped[str] = mapped_column(String(64))
+    # Respondido no cadastro do local: só câmeras de locais com Vision podem ter serviço.
+    vision_planned: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -333,11 +369,30 @@ class Contract(Base):
     starts_on: Mapped[date] = mapped_column(Date)
     ends_on: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    signed_on: Mapped[date | None] = mapped_column(Date)
+    term_months: Mapped[int | None]
+    auto_renew: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    billing_day: Mapped[int | None]
+    payment_method: Mapped[str | None] = mapped_column(String(20))
+    adjustment_index: Mapped[str | None] = mapped_column(String(20))
     notes: Mapped[str | None] = mapped_column(String(2000))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
         CheckConstraint("status IN ('active', 'ended')", name="contract_status"),
+        CheckConstraint(
+            "billing_day IS NULL OR billing_day BETWEEN 1 AND 28", name="contract_billing_day"
+        ),
+        CheckConstraint("term_months IS NULL OR term_months > 0", name="contract_term"),
+        CheckConstraint(
+            "payment_method IS NULL OR "
+            "payment_method IN ('boleto', 'pix', 'cartao', 'transferencia')",
+            name="contract_payment_method",
+        ),
+        CheckConstraint(
+            "adjustment_index IS NULL OR adjustment_index IN ('ipca', 'igpm', 'none')",
+            name="contract_adjustment_index",
+        ),
         UniqueConstraint("organization_id", "number"),
     )
 
@@ -401,6 +456,8 @@ class Equipment(Base):
     brand: Mapped[str | None] = mapped_column(String(100))
     model: Mapped[str | None] = mapped_column(String(100))
     serial_number: Mapped[str | None] = mapped_column(String(100))
+    # Número de patrimônio da Alessio (etiqueta nos equipamentos em comodato).
+    asset_tag: Mapped[str | None] = mapped_column(String(50))
     ownership: Mapped[str] = mapped_column(String(20))
     contract_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("contracts.id", ondelete="RESTRICT"), index=True

@@ -79,6 +79,9 @@ Tem que aparecer postgres, api e web com "Up" (postgres e api com
 
 Passo 7 — Criar a sua organizacao e o seu login
 -----------------------------------------------
+(So na primeira vez. Depois, os clientes sao cadastrados pelo painel, na
+aba Plataforma > Novo cliente.)
+
 Troque o nome, o e-mail e o seu nome pelos reais:
 
     docker compose exec api python -m alessio_api.admin create-organization --name "Alessio Vision" --owner-email seu@email.com --owner-name "Seu Nome"
@@ -172,6 +175,11 @@ Adicione no final:
     0 3 * * * /opt/alessiovision/deploy/vps/backup.sh >> /var/log/alessio-backup.log 2>&1
 
 As copias ficam em /var/backups/alessio (ultimos 14 dias).
+
+Adicione tambem a limpeza diaria dos historicos vencidos (servico
+encerrado ha mais de 90 dias, regra aprovada):
+
+    30 3 * * * cd /opt/alessiovision/deploy/vps && docker compose exec -T api python -m alessio_api.admin purge-history >> /var/log/alessio-purge.log 2>&1
 
 
 Para atualizar depois

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { type Camera, type Occurrence, api } from "../api";
-import { formatDate, formatDuration, SERVICE_LABELS } from "../format";
+import { formatDate, formatDay, formatDuration, SERVICE_LABELS } from "../format";
 import { Badge, type BadgeTone, Button, Callout, type Column, DataTable, Panel } from "../ui";
 import { useResource } from "../useResource";
 
@@ -127,8 +127,13 @@ export function OccurrencesPage({ canReview }: { canReview: boolean }) {
                     <Badge tone={health.tone}>{health.label}</Badge>
                   </div>
                   <div className="camera__services">
+                    {(Object.entries(camera.history_until) as [keyof typeof SERVICE_LABELS, string][]).map(([service, until]) => (
+                      <Badge key={`h-${service}`} tone="neutral">
+                        {`${SERVICE_LABELS[service]} encerrado · consulta até ${formatDay(until.slice(0, 10))}`}
+                      </Badge>
+                    ))}
                     {camera.services.length === 0 ? (
-                      <span className="text-small secondary">Sem Vision</span>
+                      Object.keys(camera.history_until).length === 0 && <span className="text-small secondary">Sem Vision</span>
                     ) : (
                       camera.services.map((service) => (
                         <Badge key={service} tone="accent">

@@ -50,10 +50,20 @@ ShortText = Annotated[str, Field(max_length=100)]
 # --- Esquemas -------------------------------------------------------------------------------
 
 
+PaymentMethod = Literal["boleto", "pix", "cartao", "transferencia"]
+AdjustmentIndex = Literal["ipca", "igpm", "none"]
+
+
 class ContractIn(BaseModel):
     number: str = Field(min_length=1, max_length=64)
     starts_on: date
     ends_on: date | None = None
+    signed_on: date | None = None
+    term_months: int | None = Field(default=None, ge=1, le=120)
+    auto_renew: bool = False
+    billing_day: int | None = Field(default=None, ge=1, le=28)
+    payment_method: PaymentMethod | None = None
+    adjustment_index: AdjustmentIndex | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
@@ -73,6 +83,12 @@ class ContractOut(BaseModel):
     starts_on: date
     ends_on: date | None
     status: Literal["active", "ended"]
+    signed_on: date | None
+    term_months: int | None
+    auto_renew: bool
+    billing_day: int | None
+    payment_method: PaymentMethod | None
+    adjustment_index: AdjustmentIndex | None
     notes: str | None
     equipment_count: int
     service_count: int
@@ -87,6 +103,7 @@ class EquipmentIn(BaseModel):
     brand: ShortText | None = None
     model: ShortText | None = None
     serial_number: ShortText | None = None
+    asset_tag: Annotated[str, Field(max_length=50)] | None = None
     site_id: UUID | None = None
     camera_id: UUID | None = None
     agent_id: UUID | None = None
@@ -114,6 +131,7 @@ class EquipmentOut(BaseModel):
     brand: str | None
     model: str | None
     serial_number: str | None
+    asset_tag: str | None
     site_id: UUID | None
     site_name: str | None
     camera_id: UUID | None
@@ -191,6 +209,7 @@ def _list_equipment(db: Session, organization_id: UUID) -> EquipmentList:
             brand=e.brand,
             model=e.model,
             serial_number=e.serial_number,
+            asset_tag=e.asset_tag,
             site_id=e.site_id,
             site_name=site,
             camera_id=e.camera_id,
@@ -433,6 +452,12 @@ def _contracts(db: Session, organization_id: UUID) -> list[ContractOut]:
                 starts_on=contract.starts_on,
                 ends_on=contract.ends_on,
                 status=contract.status,
+                signed_on=contract.signed_on,
+                term_months=contract.term_months,
+                auto_renew=contract.auto_renew,
+                billing_day=contract.billing_day,
+                payment_method=contract.payment_method,
+                adjustment_index=contract.adjustment_index,
                 notes=contract.notes,
                 equipment_count=len(items),
                 service_count=sum(1 for line in lines if line.state != "ended"),
@@ -476,6 +501,35 @@ def platform_add_contract(
         contract.id,
         number=body.number,
     )
+    db.commit()
+    return _contracts(db, organization.id)
+
+
+@router.put(
+    "/platform/organizations/{organization_id}/contracts/{contract_id}",
+    response_model=list[ContractOut],
+)
+def platform_update_contract(
+    organization_id: UUID, contract_id: UUID, body: ContractIn, staff: StaffDep, db: SessionDep
+) -> list[ContractOut]:
+    """Edita os dados do contrato. Para encerrar, use o endpoint /end."""
+    organization = _organization(db, organization_id)
+    contract = db.scalar(
+        select(Contract)
+        .where(Contract.id == contract_id, Contract.organization_id == organization.id)
+        .with_for_update()
+    )
+    if contract is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "contrato não encontrado")
+    for field, value in body.model_dump().items():
+        setattr(contract, field, value)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Já existe um contrato com esse número neste cliente."
+        ) from exc
+    audit.record(db, organization.id, staff.user.id, "contract.updated", "contract", contract.id)
     db.commit()
     return _contracts(db, organization.id)
 

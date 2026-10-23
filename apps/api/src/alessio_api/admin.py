@@ -9,6 +9,11 @@ organizações; isso é tarefa de quem opera a plataforma):
 A senha vem de ALESSIO_OWNER_PASSWORD ou é pedida no terminal. Se a pessoa já
 tiver conta, ela só ganha o papel de proprietária na nova organização.
 
+Apagar históricos vencidos (serviço encerrado há mais de 90 dias). Rodar uma
+vez por dia (cron), como o backup:
+
+    python -m alessio_api.admin purge-history
+
 Dar ou tirar acesso à área Plataforma (equipe Alessio: contratos de comodato e
 equipamentos de todos os clientes):
 
@@ -22,15 +27,17 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from alessio_api import audit
 from alessio_api.db import get_sessionmaker
-from alessio_api.models import Membership, Organization, Site, User
+from alessio_api.models import Membership, Occurrence, Organization, Site, User, ZoneMetric1m
 from alessio_api.security import hash_password, password_problem
+from alessio_api.services import history_status, now
 from alessio_api.tenancy import set_tenant
 
 
@@ -78,6 +85,41 @@ def create_organization(
     return CreatedOrganization(organization, site, owner)
 
 
+def purge_expired_history(db: Session, moment: datetime | None = None) -> dict[str, int]:
+    """Apaga ocorrências e métricas de câmeras cujo serviço terminou há mais de
+    ``history_grace_days + history_purge_days`` dias, sem renovação."""
+    moment = moment or now()
+    totals = {"occurrences": 0, "metrics": 0}
+    for organization in db.scalars(select(Organization)).all():
+        set_tenant(db, organization.id)
+        for (camera_id, service), status in history_status(db, organization.id, moment).items():
+            if status.purge_after is None or status.purge_after > moment:
+                continue
+            if service == "security":
+                deleted = db.execute(
+                    delete(Occurrence).where(Occurrence.camera_id == camera_id)
+                ).rowcount
+                totals["occurrences"] += deleted
+            else:
+                deleted = db.execute(
+                    delete(ZoneMetric1m).where(ZoneMetric1m.camera_id == camera_id)
+                ).rowcount
+                totals["metrics"] += deleted
+            if deleted:
+                audit.record(
+                    db,
+                    organization.id,
+                    None,
+                    "history.purged",
+                    "camera",
+                    camera_id,
+                    service=service,
+                    rows=deleted,
+                )
+        db.commit()
+    return totals
+
+
 def set_platform_staff(db: Session, email: str, enabled: bool) -> User:
     user = db.scalar(select(User).where(User.email == email.strip().lower()))
     if user is None:
@@ -112,7 +154,17 @@ def main(argv: list[str] | None = None) -> int:
     ):
         staff = commands.add_parser(name, help=text)
         staff.add_argument("--email", required=True)
+    commands.add_parser("purge-history", help="apaga históricos vencidos (rodar 1x por dia)")
     args = parser.parse_args(argv)
+
+    if args.command == "purge-history":
+        with get_sessionmaker()() as db:
+            totals = purge_expired_history(db)
+        print(
+            f"apagados: {totals['occurrences']} ocorrência(s), "
+            f"{totals['metrics']} minuto(s) de métricas"
+        )
+        return 0
 
     if args.command in ("grant-staff", "revoke-staff"):
         with get_sessionmaker()() as db:

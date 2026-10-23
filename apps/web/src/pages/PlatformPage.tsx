@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import {
   type CameraServices,
+  type ClientCreated,
   type Contract,
   type Equipment,
   type EquipmentInput,
@@ -24,9 +25,10 @@ import {
   parseMoney,
   SERVICE_LABELS,
 } from "../format";
-import { Badge, Button, Callout, type Column, DataTable, Panel, SelectField, TextField } from "../ui";
+import { Badge, Button, Callout, type Column, DataTable, NavTabs, Panel, SelectField, TextField } from "../ui";
 import { useResource } from "../useResource";
 import { EquipmentTable, ServicesTable, SummaryStrip } from "./equipmentShared";
+import { ClientForm, ContractForm, InviteResult, PAYMENT_LABELS, SitesAndCameras } from "./PlatformRegistration";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -86,36 +88,42 @@ function ContractsPanel({
   contracts: Contract[];
   onChange: (next: Contract[]) => void;
 }) {
-  const [number, setNumber] = useState("");
-  const [startsOn, setStartsOn] = useState(today());
+  const [editing, setEditing] = useState<Contract | null>(null);
   const [ending, setEnding] = useState<{ id: string; date: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const run = async (action: () => Promise<Contract[]>) => {
+  const end = async (contract: Contract, date: string) => {
     setBusy(true);
     setError(null);
     try {
-      onChange(await action());
-      return true;
+      onChange(await api.platform.endContract(orgId, contract.id, date));
+      setEnding(null);
     } catch (err) {
       setError(errorText(err));
-      return false;
     } finally {
       setBusy(false);
-    }
-  };
-
-  const create = async (event: FormEvent) => {
-    event.preventDefault();
-    if (await run(() => api.platform.addContract(orgId, { number: number.trim(), starts_on: startsOn, ends_on: null, notes: null }))) {
-      setNumber("");
     }
   };
 
   const columns: Column<Contract>[] = [
     { key: "number", header: "Contrato", render: (c) => c.number },
     { key: "period", header: "Vigência", data: true, render: (c) => `${formatDay(c.starts_on)} a ${c.ends_on ? formatDay(c.ends_on) : "—"}` },
+    {
+      key: "terms",
+      header: "Condições",
+      render: (c) => (
+        <span className="text-small">
+          {[
+            c.term_months ? `${c.term_months} meses${c.auto_renew ? ", renova" : ""}` : null,
+            c.billing_day ? `vence dia ${c.billing_day}` : null,
+            c.payment_method ? PAYMENT_LABELS[c.payment_method] : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "—"}
+        </span>
+      ),
+    },
     {
       key: "status",
       header: "Situação",
@@ -138,7 +146,7 @@ function ContractsPanel({
       key: "actions",
       header: "Ações",
       render: (c) =>
-        c.status !== "active" ? null : ending?.id === c.id ? (
+        ending?.id === c.id ? (
           <span className="row-actions">
             <input
               type="date"
@@ -147,14 +155,7 @@ function ContractsPanel({
               value={ending.date}
               onChange={(event) => setEnding({ id: c.id, date: event.target.value })}
             />
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={busy || !ending.date}
-              onClick={async () => {
-                if (await run(() => api.platform.endContract(orgId, c.id, ending.date))) setEnding(null);
-              }}
-            >
+            <Button size="sm" variant="danger" disabled={busy || !ending.date} onClick={() => end(c, ending.date)}>
               Encerrar
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEnding(null)}>
@@ -162,24 +163,24 @@ function ContractsPanel({
             </Button>
           </span>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => setEnding({ id: c.id, date: today() })}>
-            Encerrar contrato
-          </Button>
+          <span className="row-actions">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(c)}>
+              Editar
+            </Button>
+            {c.status === "active" && (
+              <Button size="sm" variant="ghost" onClick={() => setEnding({ id: c.id, date: today() })}>
+                Encerrar contrato
+              </Button>
+            )}
+          </span>
         ),
     },
   ];
 
   return (
-    <Panel title="Contratos" meta={`${contracts.length}`}>
-      <div className="stack">
-        {error && <Callout tone="danger">{error}</Callout>}
-        <form className="inline-form" onSubmit={create}>
-          <TextField id="contract-number" label="Número do contrato" placeholder="Ex.: CT-2026-001" value={number} onChange={(e) => setNumber(e.target.value)} />
-          <TextField id="contract-start" label="Início" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-          <Button type="submit" disabled={busy || !number.trim() || !startsOn}>
-            Novo contrato
-          </Button>
-        </form>
+    <>
+      {error && <Callout tone="danger">{error}</Callout>}
+      <Panel title="Contratos" meta={`${contracts.length}`}>
         <DataTable
           caption="Contratos"
           columns={columns}
@@ -187,8 +188,20 @@ function ContractsPanel({
           rowKey={(c) => c.id}
           empty="Nenhum contrato. Serviços Vision e equipamentos em comodato precisam de um."
         />
-      </div>
-    </Panel>
+      </Panel>
+      <Panel title={editing ? `Editar contrato ${editing.number}` : "Novo contrato"}>
+        <ContractForm
+          key={editing?.id ?? "new"}
+          orgId={orgId}
+          contract={editing ?? undefined}
+          onCancel={editing ? () => setEditing(null) : undefined}
+          onSaved={(next) => {
+            onChange(next);
+            setEditing(null);
+          }}
+        />
+      </Panel>
+    </>
   );
 }
 
@@ -339,6 +352,7 @@ type Draft = {
   brand: string;
   model: string;
   serial_number: string;
+  asset_tag: string;
   site_id: string;
   camera_id: string;
   agent_id: string;
@@ -356,6 +370,7 @@ const EMPTY: Draft = {
   brand: "",
   model: "",
   serial_number: "",
+  asset_tag: "",
   site_id: "",
   camera_id: "",
   agent_id: "",
@@ -374,6 +389,7 @@ function toDraft(e: Equipment): Draft {
     brand: e.brand ?? "",
     model: e.model ?? "",
     serial_number: e.serial_number ?? "",
+    asset_tag: e.asset_tag ?? "",
     site_id: e.site_id ?? "",
     camera_id: e.camera_id ?? "",
     agent_id: e.agent_id ?? "",
@@ -395,6 +411,7 @@ function toInput(d: Draft, returnedOn: string | null): EquipmentInput {
     brand: text(d.brand),
     model: text(d.model),
     serial_number: text(d.serial_number),
+    asset_tag: text(d.asset_tag),
     site_id: d.site_id || null,
     camera_id: d.camera_id || null,
     agent_id: d.agent_id || null,
@@ -527,6 +544,9 @@ function EquipmentPanel({
             <TextField id="eq-brand" label="Marca" value={draft.brand} onChange={(e) => set("brand", e.target.value)} />
             <TextField id="eq-model" label="Modelo" value={draft.model} onChange={(e) => set("model", e.target.value)} />
             <TextField id="eq-serial" label="Número de série" value={draft.serial_number} onChange={(e) => set("serial_number", e.target.value)} />
+            {draft.ownership === "comodato" && (
+              <TextField id="eq-asset" label="Patrimônio Alessio" value={draft.asset_tag} onChange={(e) => set("asset_tag", e.target.value)} />
+            )}
             <SelectField id="eq-site" label="Local" options={options(context.sites, "Sem local")} value={draft.site_id} onChange={(e) => set("site_id", e.target.value)} />
             <SelectField id="eq-camera" label="Câmera no sistema" options={options(context.cameras, "Nenhuma")} value={draft.camera_id} onChange={(e) => set("camera_id", e.target.value)} />
             <SelectField id="eq-agent" label="Agente no sistema" options={options(context.agents, "Nenhum")} value={draft.agent_id} onChange={(e) => set("agent_id", e.target.value)} />
@@ -573,15 +593,35 @@ function EquipmentPanel({
 
 // --- Página ---------------------------------------------------------------------------------
 
-function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack: () => void }) {
-  const contracts = useResource(() => api.platform.contracts(org.id));
-  const context = useResource(() => api.platform.context(org.id));
-  const services = useResource(() => api.platform.services(org.id));
+const TABS = [
+  { href: "cadastro", label: "Cadastro" },
+  { href: "contratos", label: "Contratos" },
+  { href: "locais", label: "Locais e câmeras" },
+  { href: "servicos", label: "Serviços" },
+  { href: "equipamentos", label: "Equipamentos" },
+];
+
+function OrganizationDetail({
+  orgId,
+  invite,
+  onBack,
+}: {
+  orgId: string;
+  invite: ClientCreated | null;
+  onBack: () => void;
+}) {
+  const [tab, setTab] = useState(invite ? "contratos" : "cadastro");
+  const client = useResource(() => api.platform.client(orgId));
+  const contracts = useResource(() => api.platform.contracts(orgId));
+  const context = useResource(() => api.platform.context(orgId));
+  const services = useResource(() => api.platform.services(orgId));
   const [contractList, setContractList] = useState<Contract[] | null>(null);
   const [servicesOverview, setServicesOverview] = useState<ServicesOverview | null>(null);
   const currentContracts = contractList ?? contracts.data ?? [];
   const currentServices = servicesOverview ?? services.data;
-  const refreshContracts = () => api.platform.contracts(org.id).then(setContractList, () => undefined);
+  const refreshContracts = () => api.platform.contracts(orgId).then(setContractList, () => undefined);
+  const refreshServices = () => api.platform.services(orgId).then(setServicesOverview, () => undefined);
+  const loadError = client.error ?? contracts.error ?? context.error ?? services.error;
 
   return (
     <>
@@ -597,23 +637,46 @@ function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack
             ← Todos os clientes
           </a>
         </p>
-        <h1 className="page-title text-display">{org.name}</h1>
+        <h1 className="page-title text-display">{client.data?.name ?? "Cliente"}</h1>
+        {client.data && (
+          <p className="text-small secondary">
+            {client.data.legal_name} · {client.data.document_formatted ?? "sem documento"}
+          </p>
+        )}
       </div>
-      {(contracts.error || context.error || services.error) && (
-        <Callout tone="danger">Falha ao carregar: {contracts.error ?? context.error ?? services.error}</Callout>
+      {loadError && <Callout tone="danger">Falha ao carregar: {loadError}</Callout>}
+      {invite && <InviteResult result={invite} />}
+      <div className="tabs">
+        <NavTabs items={TABS} current={tab} onNavigate={setTab} />
+      </div>
+
+      {tab === "cadastro" && client.data && (
+        <ClientForm key={client.data.id} client={client.data} onSaved={() => void client.reload()} />
       )}
-      <ContractsPanel
-        orgId={org.id}
-        contracts={currentContracts}
-        onChange={(next) => {
-          setContractList(next);
-          // Encerrar um contrato encerra os serviços dele.
-          api.platform.services(org.id).then(setServicesOverview, () => undefined);
-        }}
-      />
-      {currentServices && (
+      {tab === "contratos" && (
+        <ContractsPanel
+          orgId={orgId}
+          contracts={currentContracts}
+          onChange={(next) => {
+            setContractList(next);
+            void refreshServices();
+          }}
+        />
+      )}
+      {tab === "locais" && (
+        <SitesAndCameras
+          orgId={orgId}
+          contracts={currentContracts}
+          onChanged={() => {
+            void refreshServices();
+            void refreshContracts();
+            void context.reload();
+          }}
+        />
+      )}
+      {tab === "servicos" && currentServices && (
         <ServicesPanel
-          orgId={org.id}
+          orgId={orgId}
           overview={currentServices}
           contracts={currentContracts}
           onChange={(next) => {
@@ -622,9 +685,9 @@ function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack
           }}
         />
       )}
-      {context.data && (
+      {tab === "equipamentos" && context.data && (
         <EquipmentPanel
-          orgId={org.id}
+          orgId={orgId}
           contracts={currentContracts}
           context={context.data}
           servicesMonthly={currentServices?.services_monthly_cents}
@@ -636,15 +699,46 @@ function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack
 }
 
 export function PlatformPage() {
-  const [selected, setSelected] = useState<OrganizationOverview | null>(null);
-  if (selected) return <OrganizationDetail key={selected.id} org={selected} onBack={() => setSelected(null)} />;
+  const [view, setView] = useState<{ kind: "list" } | { kind: "new" } | { kind: "client"; id: string; invite: ClientCreated | null }>({
+    kind: "list",
+  });
+  if (view.kind === "client") {
+    return <OrganizationDetail key={view.id} orgId={view.id} invite={view.invite} onBack={() => setView({ kind: "list" })} />;
+  }
+  if (view.kind === "new") {
+    return (
+      <>
+        <div className="page-heading">
+          <p className="text-small">
+            <a
+              href="/plataforma"
+              onClick={(event) => {
+                event.preventDefault();
+                setView({ kind: "list" });
+              }}
+            >
+              ← Todos os clientes
+            </a>
+          </p>
+          <h1 className="page-title text-display">Novo cliente</h1>
+          <p className="text-small secondary">
+            Depois do cadastro: contrato, locais e câmeras (com a pergunta sobre o serviço Vision em cada uma).
+          </p>
+        </div>
+        <ClientForm onCreated={(created) => setView({ kind: "client", id: created.client.id, invite: created })} />
+      </>
+    );
+  }
   return (
     <>
       <div className="page-heading">
         <h1 className="page-title text-display">Plataforma</h1>
-        <p className="text-small secondary">Área da equipe Alessio: contratos de comodato e equipamentos de cada cliente.</p>
+        <p className="text-small secondary">Área da equipe Alessio: cadastro de clientes, contratos, câmeras, serviços e equipamentos.</p>
       </div>
-      <OrganizationList onOpen={setSelected} />
+      <div>
+        <Button onClick={() => setView({ kind: "new" })}>Novo cliente</Button>
+      </div>
+      <OrganizationList onOpen={(org) => setView({ kind: "client", id: org.id, invite: null })} />
     </>
   );
 }

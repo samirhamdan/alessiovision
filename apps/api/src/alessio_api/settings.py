@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     enrollment_hours: int = 24
     # Teste grátis de serviço Vision por câmera (regra R2).
     trial_days: int = 3
+    # Fim do serviço (regra R2, item 5): histórico só leitura por N dias, depois
+    # oculto e apagado M dias depois (recuperável se renovar antes de apagar).
+    history_grace_days: int = 30
+    history_purge_days: int = 60
     max_failed_logins: int = 5
     lockout_minutes: int = 15
 

@@ -56,6 +56,7 @@ export function equipmentColumns(actions?: (item: Equipment) => ReactNode): Colu
           <div className="secondary text-small">
             {[e.brand, e.model].filter(Boolean).join(" ") || "Sem marca/modelo"}
             {e.serial_number ? ` · nº ${e.serial_number}` : ""}
+            {e.asset_tag ? ` · patrimônio ${e.asset_tag}` : ""}
           </div>
         </>
       ),

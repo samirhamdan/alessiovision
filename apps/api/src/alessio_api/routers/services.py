@@ -209,52 +209,14 @@ def platform_contract_service(
     """Contrata a modalidade para a câmera. Um teste em andamento é encerrado na hora."""
     organization = _organization(db, organization_id)
     camera = _camera(db, organization.id, body.camera_id)
-    contract = db.scalar(
-        select(Contract).where(
-            Contract.id == body.contract_id, Contract.organization_id == organization.id
-        )
-    )
-    if contract is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "contrato não encontrado")
-    if contract.status != "active":
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "Esse contrato está encerrado. Use um contrato ativo.",
-        )
-    moment = now()
-    starts_at = start_of_day(db, camera.id, body.starts_on) if body.starts_on else moment
-    for line in _current_lines(db, camera, body.service):
-        if line.source == "trial":
-            line.ends_at = max(starts_at, line.starts_at + timedelta(microseconds=1))
-        else:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"A câmera {camera.name} já tem {LABEL[body.service]} contratado. "
-                "Encerre o serviço atual antes de contratar de novo.",
-            )
-    line = CameraService(
-        organization_id=organization.id,
-        camera_id=camera.id,
-        service=body.service,
-        source="contract",
-        contract_id=contract.id,
-        monthly_fee_cents=body.monthly_fee_cents,
-        starts_at=starts_at,
-        ends_at=end_of_day(db, camera.id, contract.ends_on) if contract.ends_on else None,
-        created_by=staff.user.id,
-    )
-    db.add(line)
-    db.flush()
-    audit.record(
+    contract_service(
         db,
-        organization.id,
+        camera,
+        body.service,
+        body.contract_id,
+        body.monthly_fee_cents,
+        body.starts_on,
         staff.user.id,
-        "service.contracted",
-        "camera",
-        camera.id,
-        service=body.service,
-        contract=contract.number,
-        monthly_fee_cents=body.monthly_fee_cents,
     )
     db.commit()
     return services_overview(db, organization.id)
@@ -270,43 +232,7 @@ def platform_start_trial(
 ) -> ServicesOut:
     organization = _organization(db, organization_id)
     camera = _camera(db, organization.id, body.camera_id)
-    used = db.scalar(
-        select(CameraService.id).where(
-            CameraService.camera_id == camera.id,
-            CameraService.service == body.service,
-            CameraService.source == "trial",
-        )
-    )
-    if used is not None:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"A câmera {camera.name} já usou o teste de {LABEL[body.service]}.",
-        )
-    if _current_lines(db, camera, body.service):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, f"A câmera {camera.name} já tem {LABEL[body.service]}."
-        )
-    moment = now()
-    db.add(
-        CameraService(
-            organization_id=organization.id,
-            camera_id=camera.id,
-            service=body.service,
-            source="trial",
-            starts_at=moment,
-            ends_at=moment + timedelta(days=get_settings().trial_days),
-            created_by=staff.user.id,
-        )
-    )
-    audit.record(
-        db,
-        organization.id,
-        staff.user.id,
-        "service.trial",
-        "camera",
-        camera.id,
-        service=body.service,
-    )
+    start_trial(db, camera, body.service, staff.user.id)
     db.commit()
     return services_overview(db, organization.id)
 
@@ -358,3 +284,98 @@ def end_contract_services(db: Session, contract: Contract) -> None:
         ends_at = end_of_day(db, line.camera_id, contract.ends_on)
         if line.ends_at is None or line.ends_at > ends_at:
             line.ends_at = max(ends_at, line.starts_at + timedelta(microseconds=1))
+
+
+# --- Regras reutilizadas pelo cadastro de câmera (routers/clients.py) ------------------------
+
+
+def contract_service(
+    db: Session,
+    camera: Camera,
+    service: str,
+    contract_id: UUID,
+    monthly_fee_cents: int | None,
+    starts_on: date | None,
+    user_id: UUID,
+) -> CameraService:
+    contract = db.scalar(
+        select(Contract).where(
+            Contract.id == contract_id, Contract.organization_id == camera.organization_id
+        )
+    )
+    if contract is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "contrato não encontrado")
+    if contract.status != "active":
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Esse contrato está encerrado. Use um contrato ativo.",
+        )
+    starts_at = start_of_day(db, camera.id, starts_on) if starts_on else now()
+    for line in _current_lines(db, camera, service):
+        if line.source == "trial":
+            line.ends_at = max(starts_at, line.starts_at + timedelta(microseconds=1))
+        else:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"A câmera {camera.name} já tem {LABEL[service]} contratado. "
+                "Encerre o serviço atual antes de contratar de novo.",
+            )
+    line = CameraService(
+        organization_id=camera.organization_id,
+        camera_id=camera.id,
+        service=service,
+        source="contract",
+        contract_id=contract.id,
+        monthly_fee_cents=monthly_fee_cents,
+        starts_at=starts_at,
+        ends_at=end_of_day(db, camera.id, contract.ends_on) if contract.ends_on else None,
+        created_by=user_id,
+    )
+    db.add(line)
+    db.flush()
+    audit.record(
+        db,
+        camera.organization_id,
+        user_id,
+        "service.contracted",
+        "camera",
+        camera.id,
+        service=service,
+        contract=contract.number,
+        monthly_fee_cents=monthly_fee_cents,
+    )
+    return line
+
+
+def start_trial(db: Session, camera: Camera, service: str, user_id: UUID) -> CameraService:
+    used = db.scalar(
+        select(CameraService.id).where(
+            CameraService.camera_id == camera.id,
+            CameraService.service == service,
+            CameraService.source == "trial",
+        )
+    )
+    if used is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A câmera {camera.name} já usou o teste de {LABEL[service]}.",
+        )
+    if _current_lines(db, camera, service):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"A câmera {camera.name} já tem {LABEL[service]}."
+        )
+    moment = now()
+    line = CameraService(
+        organization_id=camera.organization_id,
+        camera_id=camera.id,
+        service=service,
+        source="trial",
+        starts_at=moment,
+        ends_at=moment + timedelta(days=get_settings().trial_days),
+        created_by=user_id,
+    )
+    db.add(line)
+    audit.record(
+        db, camera.organization_id, user_id, "service.trial", "camera", camera.id, service=service
+    )
+    return line

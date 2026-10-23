@@ -18,7 +18,7 @@ from alessio_api.auth import Principal, require
 from alessio_api.db import get_session
 from alessio_api.models import Agent, Camera, Occurrence, Zone, ZoneMetric1m
 from alessio_api.permissions import Permission
-from alessio_api.services import active_services
+from alessio_api.services import active_services, hidden_cameras, history_status
 
 router = APIRouter(prefix="/api/v1", tags=["painel"])
 
@@ -60,6 +60,8 @@ class CameraOut(BaseModel):
     last_status_at: datetime | None
     agent_last_seen_at: datetime | None
     services: list[str]
+    # Modalidades encerradas ainda consultáveis: {"security": fim da consulta}.
+    history_until: dict[str, datetime]
 
 
 class ZoneMetricOut(BaseModel):
@@ -153,6 +155,10 @@ def list_occurrences(
         .order_by(Occurrence.started_at.desc())
         .limit(limit)
     )
+    # Serviço encerrado há mais de 30 dias: o histórico de ocorrências some do painel.
+    hidden = hidden_cameras(session, org_id, "security")
+    if hidden:
+        query = query.where(Occurrence.camera_id.not_in(hidden))
     if state:
         query = query.where(Occurrence.state == state)
     if not include_shadow:
@@ -170,6 +176,7 @@ def list_cameras(
     org_id: Annotated[UUID, Depends(_org(Permission.CAMERAS_READ))], session: SessionDep
 ) -> list[CameraOut]:
     active = active_services(session, org_id)
+    history = history_status(session, org_id)
     rows = session.execute(
         select(Camera, Agent.last_seen_at)
         .join(Agent, Agent.id == Camera.agent_id)
@@ -186,6 +193,11 @@ def list_cameras(
             last_status_at=camera.last_status_at,
             agent_last_seen_at=last_seen,
             services=sorted(active.get(camera.id, set())),
+            history_until={
+                service: status.visible_until
+                for (camera_id, service), status in history.items()
+                if camera_id == camera.id and status.state == "grace"
+            },
         )
         for camera, last_seen in rows
     ]
@@ -199,6 +211,7 @@ def zone_metrics(
     start: Annotated[datetime, Query(alias="from")],
     end: Annotated[datetime, Query(alias="to")],
 ) -> list[ZoneMetricOut]:
+    hidden = hidden_cameras(session, org_id, "operation")
     rows = session.scalars(
         select(ZoneMetric1m)
         .where(
@@ -206,6 +219,7 @@ def zone_metrics(
             ZoneMetric1m.zone_id == zone_id,
             ZoneMetric1m.bucket_start >= start,
             ZoneMetric1m.bucket_start < end,
+            ZoneMetric1m.camera_id.not_in(hidden) if hidden else True,
         )
         .order_by(ZoneMetric1m.bucket_start)
         .limit(1440)

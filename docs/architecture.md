@@ -234,10 +234,38 @@ ocioso ──presença fora do horário──▶ pendente ──duração mínim
   recarga sem reinício é da Fase 2).
 - Encerrar o contrato encerra os serviços dele no último dia do contrato
   (fuso do local da câmera).
-- **Fim do serviço, decisão pendente.** Implementado: no fim, o agente para de
-  analisar e o histórico continua visível. Proposta em avaliação: 30 dias de
-  consulta só leitura, depois o histórico some do painel e é apagado 60 dias
-  depois (LGPD), recuperável se o cliente renovar dentro de 90 dias.
+- **Fim do serviço (aprovado):** no fim, o agente para de analisar aquela
+  modalidade. O histórico fica **30 dias** só para consulta (a câmera mostra
+  "encerrado · consulta até dd/mm"), depois **some do painel** e é **apagado
+  60 dias depois** (90 após o fim), por câmera e modalidade. Renovar antes de
+  apagar traz tudo de volta. A exclusão roda uma vez por dia com
+  `python -m alessio_api.admin purge-history` (cron) e fica na auditoria.
+
+### R3. Cadastro do cliente (área Plataforma)
+
+Ordem: **Cliente → Contrato → Locais → Agentes → Câmeras**.
+
+- **Cliente:** PJ (CNPJ, inclusive o alfanumérico) ou PF (CPF), razão social
+  ou nome completo, nome fantasia (exibição), inscrição estadual, e-mail
+  financeiro, telefone, responsável (nome, e-mail, celular), endereço (CEP,
+  logradouro, número, complemento, bairro, cidade, UF), observações, situação
+  (ativo/inativo). CNPJ/CPF validados pelo dígito verificador e únicos. Ao
+  cadastrar, o local principal nasce com o mesmo endereço e o responsável pode
+  ser convidado como proprietário do painel.
+- **Contrato:** número, assinatura, início, prazo em meses, renovação
+  automática, dia de vencimento (1 a 28), forma de pagamento (boleto, Pix,
+  cartão, transferência), índice de reajuste (IPCA, IGP-M, sem), observações.
+- **Local:** nome, endereço e a pergunta **"Haverá serviço Vision neste
+  local?"**. Só câmeras de locais com Vision podem ter serviço.
+- **Câmera, numa só operação:** nome, local e **"Esta câmera terá serviço
+  Vision?"**. Se sim: agente, apelido no agente e, para cada modalidade
+  (Segurança, Operação), não / contratado (valor negociado) / teste de 3 dias.
+  Junto, o **equipamento físico**: propriedade (cliente ou comodato), marca,
+  modelo, série, patrimônio Alessio, valor mensal do comodato, valor de
+  reposição. Câmera sem Vision entra só como equipamento. A câmera com Vision
+  nasce com a zona "Imagem inteira" e a regra de presença fora do horário
+  (seg. a sex., 8h às 18h); ajustar zona e horário vem com as Fases 3 e 4.
+  Se qualquer parte falhar, nada é gravado.
 
 ## 7. Plano de fases
 
