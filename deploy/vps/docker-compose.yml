@@ -1,0 +1,106 @@
+# Alessio Vision na VPS (atrás do Caddy que já atende os outros sistemas).
+# Passo a passo em IMPLANTAR.txt, na raiz do repositório.
+#
+# Só o painel é publicado, e só na interface 172.18.0.1 (a mesma usada pelos
+# outros sistemas): o Caddy faz o HTTPS e encaminha para cá. A API e o
+# PostgreSQL ficam acessíveis apenas dentro desta rede do Docker.
+name: alessio
+
+x-api-image: &api-build
+  context: ../..
+  dockerfile: apps/api/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alessio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD em deploy/vps/.env}
+      POSTGRES_DB: alessio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alessio -d alessio"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+
+  api:
+    build: *api-build
+    image: alessio-api
+    restart: unless-stopped
+    environment:
+      ALESSIO_DATABASE_URL: postgresql+psycopg://alessio:${POSTGRES_PASSWORD}@postgres:5432/alessio
+      ALESSIO_CORS_ORIGINS: '["https://${ALESSIO_DOMAIN:?defina ALESSIO_DOMAIN em deploy/vps/.env}"]'
+    # Aplica as migrações pendentes a cada subida (idempotente).
+    command: >-
+      sh -c "alembic upgrade head
+      && exec uvicorn alessio_api.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+
+  web:
+    build:
+      context: ../../apps/web
+    image: alessio-web
+    restart: unless-stopped
+    ports:
+      - "${ALESSIO_BIND:-172.18.0.1}:${ALESSIO_PORT:-5010}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
+
+  # --- Demonstração (opcional): docker compose --profile demo ... -------------------------
+  # Cria a "Organização Demo" com uma câmera e reproduz um vídeo de pedestres como se
+  # fosse a câmera, para ver o fluxo completo antes de instalar um agente de verdade.
+  demo-seed:
+    profiles: ["demo"]
+    image: alessio-api
+    environment:
+      ALESSIO_DATABASE_URL: postgresql+psycopg://alessio:${POSTGRES_PASSWORD}@postgres:5432/alessio
+      ALESSIO_DEMO_AGENT_TOKEN: ${ALESSIO_DEMO_AGENT_TOKEN:-}
+      ALESSIO_DEMO_OWNER_EMAIL: ${ALESSIO_DEMO_OWNER_EMAIL:-}
+      ALESSIO_DEMO_OWNER_PASSWORD: ${ALESSIO_DEMO_OWNER_PASSWORD:-}
+    command: ["python", "-m", "alessio_api.seed"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  demo-agent:
+    profiles: ["demo"]
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    image: alessio-agent
+    environment:
+      ALESSIO_API_URL: http://api:8000
+      ALESSIO_AGENT_TOKEN: ${ALESSIO_DEMO_AGENT_TOKEN:-}
+      ALESSIO_SOURCES_FILE: /config/sources.json
+      # Sexta, 23:00 em São Paulo: fora do expediente da regra de demonstração.
+      ALESSIO_REPLAY_START: "2026-10-23T23:00:00-03:00"
+    volumes:
+      - ../data:/data:ro
+      - ../agent/sources.json:/config/sources.json:ro
+      - agentstate:/state
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 768m
+
+volumes:
+  pgdata:
+  agentstate:

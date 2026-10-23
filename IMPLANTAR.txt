@@ -1,0 +1,194 @@
+IMPLANTAR ALESSIO VISION NA VPS
+===============================
+
+Endereco:  https://alessio-vision.duckdns.org
+VPS:       23.95.96.132 (Caddy como reverse proxy, igual aos outros sistemas)
+Porta:     5010 (so na interface 172.18.0.1, nao fica aberta para a internet)
+
+O sistema roda em Docker: banco PostgreSQL, API e painel. So o painel
+recebe conexoes do Caddy; a API e o banco ficam fechados dentro do Docker.
+
+
+Passo 1 — DuckDNS
+-----------------
+Ja feito: alessio-vision.duckdns.org aponta para 23.95.96.132.
+
+
+Passo 2 — Conectar na VPS
+-------------------------
+
+    ssh root@23.95.96.132
+
+
+Passo 3 — Conferir o ambiente
+-----------------------------
+Cole um por um:
+
+    docker compose version
+    ip addr | grep 172.18.0.1
+    ss -ltnp | grep 5010
+
+O primeiro tem que mostrar a versao do Docker Compose.
+O segundo tem que mostrar uma linha com 172.18.0.1 (a rede do Caddy).
+O terceiro NAO pode mostrar nada (porta 5010 livre). Se mostrar algo,
+use outra porta no Passo 5 (ALESSIO_PORT) e no Passo 8.
+
+
+Passo 4 — Baixar o codigo
+-------------------------
+
+    cd /opt
+    git clone -b claude/alessio-mvp-architecture-qgq4d7 https://github.com/samirhamdan/alessiovision.git
+    cd alessiovision/deploy/vps
+    cp .env.example .env
+
+
+Passo 5 — Configurar
+--------------------
+Gere uma senha para o banco (copie o resultado):
+
+    openssl rand -hex 24
+
+Abra o arquivo de configuracao:
+
+    nano .env
+
+Preencha:
+    POSTGRES_PASSWORD=  (cole a senha gerada acima)
+
+Os outros valores ja estao certos para esta VPS. Os campos de
+demonstracao (ALESSIO_DEMO_...) so precisam ser preenchidos se voce
+for fazer o Passo 10.
+
+Salve com Ctrl+O, Enter, Ctrl+X.
+
+
+Passo 6 — Construir e ligar
+---------------------------
+A primeira vez demora alguns minutos (monta o painel e a API):
+
+    docker compose up -d --build
+
+Conferir se esta tudo rodando:
+
+    docker compose ps
+
+Tem que aparecer postgres, api e web com "Up" (postgres e api com
+"healthy").
+
+
+Passo 7 — Criar a sua organizacao e o seu login
+-----------------------------------------------
+Troque o nome, o e-mail e o seu nome pelos reais:
+
+    docker compose exec api python -m alessio_api.admin create-organization --name "Alessio Vision" --owner-email seu@email.com --owner-name "Seu Nome"
+
+Ele vai pedir a senha duas vezes (pelo menos 10 caracteres).
+Esse e o login de proprietario. Outras pessoas entram por convite,
+pela tela Membros do painel.
+
+
+Passo 8 — Configurar o Caddy
+----------------------------
+Abra o Caddyfile:
+
+    nano /opt/sdr-agent/infra/lite/Caddyfile
+
+Adicione este bloco NO FINAL do arquivo:
+
+    alessio-vision.duckdns.org {
+            reverse_proxy 172.18.0.1:5010
+    }
+
+Salve com Ctrl+O, Enter, Ctrl+X.
+
+Reinicie o Caddy:
+
+    docker restart lite_default-caddy-1
+
+(Se o nome do container for diferente, veja com:  docker ps | grep caddy)
+
+
+Passo 9 — Testar
+----------------
+Aguarde 1 minuto para o certificado SSL ser emitido.
+Depois abra no navegador:
+
+    https://alessio-vision.duckdns.org
+
+Entre com o e-mail e a senha do Passo 7.
+
+Importante: o login so funciona por HTTPS (o cookie de sessao e
+"Secure"). Abrir por http:// ou pelo IP nao funciona, de proposito.
+
+
+Passo 10 — Demonstracao (opcional)
+----------------------------------
+Para ver o fluxo completo antes de instalar um agente de verdade:
+cria uma "Organizacao Demo" com uma camera e reproduz um video de
+pedestres como se fosse essa camera.
+
+No .env, preencha:
+    ALESSIO_DEMO_AGENT_TOKEN=     (gere com: openssl rand -hex 24)
+    ALESSIO_DEMO_OWNER_EMAIL=     (pode ser o seu e-mail do Passo 7)
+    ALESSIO_DEMO_OWNER_PASSWORD=  (pelo menos 10 caracteres)
+
+Depois:
+
+    cd /opt/alessiovision
+    ./deploy/scripts/download-sample-video.sh
+    cd deploy/vps
+    docker compose --profile demo run --rm demo-seed
+    docker compose --profile demo build demo-agent
+    docker compose --profile demo run --rm demo-agent
+
+Atencao: se usar o mesmo e-mail do Passo 7, a senha desse login passa
+a ser a ALESSIO_DEMO_OWNER_PASSWORD. No painel, troque de organizacao
+pelo seletor no topo.
+
+
+Passo 11 — Copia de seguranca diaria
+------------------------------------
+
+    crontab -e
+
+Adicione no final:
+
+    0 3 * * * /opt/alessiovision/deploy/vps/backup.sh >> /var/log/alessio-backup.log 2>&1
+
+As copias ficam em /var/backups/alessio (ultimos 14 dias).
+
+
+Para atualizar depois
+---------------------
+Quando tiver codigo novo:
+
+    cd /opt/alessiovision
+    git pull
+    cd deploy/vps
+    docker compose up -d --build
+
+As atualizacoes do banco sao aplicadas sozinhas ao ligar a API.
+
+
+Para ver os logs
+----------------
+
+    cd /opt/alessiovision/deploy/vps
+    docker compose logs -f api
+
+(Ctrl+C para sair dos logs)
+
+
+Instalar um agente perto das cameras
+------------------------------------
+No painel, va em Agentes, crie o agente e copie o comando que aparece.
+No computador que fica na rede das cameras (com Python 3.12 e uv):
+
+    git clone -b claude/alessio-mvp-architecture-qgq4d7 https://github.com/samirhamdan/alessiovision.git
+    cd alessiovision
+    uv sync --package alessio-agent
+    uv run alessio-agent enroll --api-url https://alessio-vision.duckdns.org --code XXXX-XXXX-XXXX-XXXX
+
+As cameras desse agente ainda sao cadastradas pelo suporte (o cadastro
+pelo painel chega numa proxima fase).

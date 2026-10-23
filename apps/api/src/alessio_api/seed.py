@@ -150,11 +150,11 @@ def seed_demo(
 
 def main() -> int:
     org_id = uuid.UUID(os.environ.get("ALESSIO_DEMO_ORG_ID", str(DEFAULT_ORG_ID)))
-    token = os.environ.get("ALESSIO_DEMO_AGENT_TOKEN")
+    token = os.environ.get("ALESSIO_DEMO_AGENT_TOKEN") or None  # vazio conta como ausente
     generated = token is None
     token = token or generate_agent_token()
-    email = os.environ.get("ALESSIO_DEMO_OWNER_EMAIL")
-    password = os.environ.get("ALESSIO_DEMO_OWNER_PASSWORD")
+    email = os.environ.get("ALESSIO_DEMO_OWNER_EMAIL") or None
+    password = os.environ.get("ALESSIO_DEMO_OWNER_PASSWORD") or None
     if email and password_problem(password or ""):
         print(
             f"erro: ALESSIO_DEMO_OWNER_PASSWORD: {password_problem(password or '')}",

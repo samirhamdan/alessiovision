@@ -21,7 +21,12 @@ apps/web             painel (React, TypeScript, Vite) e design system (apps/web/
 deploy               Docker Compose de demonstração
 ```
 
-## Rodar com Docker Compose
+## Implantação na VPS
+
+Passo a passo em [`IMPLANTAR.txt`](IMPLANTAR.txt) (`deploy/vps/`: Docker Compose atrás do Caddy,
+em https://alessio-vision.duckdns.org).
+
+## Rodar com Docker Compose (demonstração local)
 
 ```sh
 cp .env.example deploy/.env            # troque o token e a senha de demonstração
