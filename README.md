@@ -7,28 +7,31 @@ as câmeras (na nuvem ou na rede do cliente) e envia ocorrências e métricas pa
 a plataforma, que as exibe num painel web. O vídeo não precisa sair da rede do
 cliente.
 
-Estado atual: **Fase 0**. O fluxo completo funciona de ponta a ponta: vídeo →
-agente → ocorrência no PostgreSQL → painel. Arquitetura, decisões e próximos
-passos estão em [`docs/architecture.md`](docs/architecture.md).
+Estado atual: **Fase 1**. Além do fluxo vídeo → agente → ocorrência → painel,
+há login, organizações com papéis, isolamento por Row-Level Security no
+PostgreSQL, ativação de agentes por código de uso único e convites de membros.
+Arquitetura, decisões e próximos passos estão em
+[`docs/architecture.md`](docs/architecture.md).
 
 ```
 packages/contracts   protocolo versionado agente ↔ nuvem (Pydantic)
 apps/agent           Agente ALESSIO (OpenCV, regras, métricas, fila local)
 apps/api             plataforma (FastAPI, SQLAlchemy, Alembic, PostgreSQL)
 apps/web             painel (React, TypeScript, Vite) e design system (apps/web/design-system)
-deploy               Docker Compose da Fase 0
+deploy               Docker Compose de demonstração
 ```
 
 ## Rodar com Docker Compose
 
 ```sh
-cp .env.example deploy/.env            # troque ALESSIO_DEMO_AGENT_TOKEN
+cp .env.example deploy/.env            # troque o token e a senha de demonstração
 ./deploy/scripts/download-sample-video.sh
 docker compose -f deploy/docker-compose.yml up --build -d
 docker compose -f deploy/docker-compose.yml --profile demo run --rm agent
 ```
 
-Painel: <http://localhost:8080> · API: <http://localhost:8000/docs>
+Painel: <http://localhost:8080> (entre com `ALESSIO_DEMO_OWNER_EMAIL` e
+`ALESSIO_DEMO_OWNER_PASSWORD`) · API: <http://localhost:8000/docs>
 
 O agente de demonstração reproduz `deploy/data/demo.avi` como se fosse uma
 câmera, com o primeiro quadro numa sexta às 23:00. Como a regra de
@@ -43,19 +46,43 @@ Requisitos: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22 e PostgreSQL
 ```sh
 uv sync                                         # instala os três pacotes Python
 export ALESSIO_DATABASE_URL=postgresql+psycopg://alessio:alessio@localhost:5432/alessio
-export ALESSIO_DASHBOARD_ORG_ID=00000000-0000-4000-8000-000000000001
+export ALESSIO_COOKIE_SECURE=false              # só em desenvolvimento por HTTP
 export ALESSIO_DEMO_AGENT_TOKEN=alg_dev-token
+export ALESSIO_DEMO_OWNER_EMAIL=demo@example.com ALESSIO_DEMO_OWNER_PASSWORD=senha-de-desenvolvimento
 
 (cd apps/api && uv run alembic upgrade head)
 uv run python -m alessio_api.seed
 uv run uvicorn alessio_api.main:app --reload    # http://localhost:8000
 
 echo '{"demo": "deploy/data/demo.avi"}' > sources.json
-uv run alessio-agent --token alg_dev-token --sources sources.json \
+uv run alessio-agent run --token alg_dev-token --sources sources.json \
     --replay-start 2026-10-23T23:00:00-03:00
 
 (cd apps/web && npm install && npm run dev)     # http://localhost:5173
 ```
+
+## Clientes, agentes e membros
+
+Um cliente novo é criado por quem opera a plataforma (o painel não cria
+organizações):
+
+```sh
+uv run python -m alessio_api.admin create-organization --name "Acme" \
+    --owner-email ana@acme.com.br --owner-name "Ana Souza"   # pede a senha
+```
+
+A partir daí, tudo é feito no painel:
+
+- **Agentes:** crie o agente e rode no computador junto às câmeras o comando
+  exibido (`alessio-agent enroll --api-url … --code …`). O código vale uma vez
+  e expira em 24 h; o agente guarda a credencial em
+  `.alessio-agent/credentials.json` (permissão 0600). "Trocar credencial" gera um
+  código novo; ao ativá-lo, o token anterior deixa de valer. "Revogar" corta o
+  acesso na hora.
+- **Membros:** adicione por e-mail. Quem ainda não tem conta recebe um link de
+  convite (válido por 72 h, uso único) para criar a própria senha. Papéis:
+  Leitor (consulta), Operador (reconhece ocorrências), Administrador (agentes,
+  locais e membros) e Proprietário (tudo, inclusive outros proprietários).
 
 Para uma câmera real, aponte o `source_ref` para uma URL RTSP no `sources.json`
 local do agente (ex.: `{"demo": "rtsp://usuario:senha@10.0.0.20:554/stream2"}`;

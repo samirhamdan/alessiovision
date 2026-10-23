@@ -1,15 +1,19 @@
 export type LogoSources = { light: string; dark: string };
 
 export type LogoProps = {
-  /** horizontal: cabeçalhos. mark: espaços quadrados (ícone de app, avatar do sistema). */
-  variant?: "horizontal" | "mark";
+  /** horizontal: cabeçalhos. mark: espaços quadrados. stacked: login e capas. */
+  variant?: "horizontal" | "mark" | "stacked";
   /** Altura em px; a largura acompanha a proporção do arquivo. */
   height?: number;
   /** Arquivos para fundo claro e escuro. Padrão: /brand/ do painel. */
   sources?: LogoSources;
 };
 
-const DEFAULT_SOURCES: Record<"horizontal" | "mark", LogoSources> = {
+const DEFAULT_SOURCES: Record<"horizontal" | "mark" | "stacked", LogoSources> = {
+  stacked: {
+    light: "/brand/alessio-vision-logo.png",
+    dark: "/brand/alessio-vision-logo-on-dark.png",
+  },
   horizontal: {
     light: "/brand/alessio-vision-horizontal.png",
     dark: "/brand/alessio-vision-horizontal-on-dark.png",

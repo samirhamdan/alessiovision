@@ -1,14 +1,17 @@
-"""Prova da Fase 0: vídeo → agente → ocorrência no PostgreSQL → API do painel.
+"""Fluxo completo: código de ativação no painel → agente ativado → vídeo →
+ocorrência no PostgreSQL (com RLS) → API do painel autenticada.
 
-O agente real (fila local, envio, configuração) conversa com a API real; só o
-detector é substituído por um roteiro determinístico.
+O agente real (ativação, fila local, envio, configuração) conversa com a API
+real; só o detector é substituído por um roteiro determinístico.
 """
 
 import json
+import stat
 import threading
 from datetime import UTC, datetime, timedelta
 
 from alessio_agent.cloud import CloudClient
+from alessio_agent.enrollment import enroll, load_credentials
 from alessio_agent.runner import Agent, AgentSettings
 from alessio_agent.testing import CENTER_PERSON, ScriptedDetector, write_test_video
 
@@ -16,7 +19,13 @@ from alessio_agent.testing import CENTER_PERSON, ScriptedDetector, write_test_vi
 REPLAY_START = datetime(2026, 10, 24, 2, 0, tzinfo=UTC)
 
 
-def test_video_to_dashboard(client, agent_token, tmp_path):
+def test_video_to_dashboard(client, demo, tmp_path):
+    code = client.post(f"/api/v1/agents/{demo.agent_id}/enrollment-code").json()["enrollment_code"]
+    state_dir = tmp_path / "state"
+    enroll("http://testserver", code, state_dir, http=client)
+    assert stat.S_IMODE((state_dir / "credentials.json").stat().st_mode) == 0o600
+    agent_token = load_credentials(state_dir)["token"]
+
     video = write_test_video(tmp_path / "demo.avi", seconds=30, fps=10)
     sources = tmp_path / "sources.json"
     sources.write_text(json.dumps({"demo": str(video)}))
@@ -28,7 +37,7 @@ def test_video_to_dashboard(client, agent_token, tmp_path):
             api_url="http://testserver",
             token=agent_token,
             sources_file=sources,
-            state_dir=tmp_path / "state",
+            state_dir=state_dir,
             replay_start=REPLAY_START,
         ),
         client=CloudClient("http://testserver", agent_token, http=client),

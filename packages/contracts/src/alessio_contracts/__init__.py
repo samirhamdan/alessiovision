@@ -9,6 +9,7 @@ from alessio_contracts.config import (
     ScheduleWindow,
     ZoneConfig,
 )
+from alessio_contracts.enrollment import EnrollmentRequest, EnrollmentResult
 from alessio_contracts.messages import (
     MAX_BATCH_SIZE,
     SCHEMA_VERSION,
@@ -38,6 +39,8 @@ __all__ = [
     "BatchResult",
     "CameraConfig",
     "CameraStatus",
+    "EnrollmentRequest",
+    "EnrollmentResult",
     "Heartbeat",
     "HeartbeatMessage",
     "MessageBatch",

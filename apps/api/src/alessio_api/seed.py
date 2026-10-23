@@ -1,10 +1,10 @@
-"""Cria (ou atualiza) os dados de demonstração da Fase 0.
+"""Cria (ou atualiza) os dados de demonstração.
 
-Uso: ``python -m alessio_api.seed``. Lê ``ALESSIO_DASHBOARD_ORG_ID`` e
-``ALESSIO_DEMO_AGENT_TOKEN``; se o token não for informado, gera e imprime um.
-
-Os cadastros pelo painel chegam na Fase 1; até lá, este script é a única forma
-de cadastrar organização, agente, câmera, zona e regra.
+Uso: ``python -m alessio_api.seed``. Lê ``ALESSIO_DEMO_AGENT_TOKEN`` (se ausente,
+gera e imprime um) e, para o login no painel, ``ALESSIO_DEMO_OWNER_EMAIL`` e
+``ALESSIO_DEMO_OWNER_PASSWORD``. Só para demonstração e desenvolvimento: um
+cliente real é criado com ``python -m alessio_api.admin`` e o agente é ativado
+por código.
 """
 
 import os
@@ -12,12 +12,27 @@ import sys
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alessio_api.db import get_sessionmaker
-from alessio_api.models import Agent, Camera, EventRule, Organization, Site, Zone
-from alessio_api.security import generate_agent_token, hash_token
+from alessio_api.models import (
+    Agent,
+    Camera,
+    EventRule,
+    Membership,
+    Organization,
+    Site,
+    User,
+    Zone,
+)
+from alessio_api.security import (
+    generate_agent_token,
+    hash_password,
+    hash_token,
+    password_problem,
+)
+from alessio_api.tenancy import set_tenant
 from alessio_contracts import AfterHoursPresenceRule
 
 DEFAULT_ORG_ID = uuid.UUID("00000000-0000-4000-8000-000000000001")
@@ -45,15 +60,35 @@ class DemoIds:
     rule_id: uuid.UUID
 
 
-def seed_demo(session: Session, org_id: uuid.UUID, agent_token: str) -> DemoIds:
+def seed_demo(
+    session: Session,
+    org_id: uuid.UUID,
+    agent_token: str,
+    owner_email: str | None = None,
+    owner_password: str | None = None,
+    org_name: str = "Organização Demo",
+) -> DemoIds:
     # Valida a configuração da regra com o mesmo contrato que o agente usa.
     AfterHoursPresenceRule(id=uuid.uuid4(), version=1, zone_id=uuid.uuid4(), **DEMO_RULE_CONFIG)
 
     org = session.get(Organization, org_id)
     if org is None:
-        org = Organization(id=org_id, name="Organização Demo")
+        org = Organization(id=org_id, name=org_name)
         session.add(org)
         session.flush()
+    set_tenant(session, org.id)
+
+    if owner_email and owner_password:
+        email = owner_email.lower()
+        owner = session.scalar(select(User).where(User.email == email))
+        if owner is None:
+            owner = User(email=email, name="Pessoa Demo")
+            session.add(owner)
+        owner.password_hash = hash_password(owner_password)
+        owner.status = "active"
+        session.flush()
+        if session.get(Membership, (org.id, owner.id)) is None:
+            session.add(Membership(organization_id=org.id, user_id=owner.id, role="owner"))
 
     site = session.scalar(select(Site).where(Site.organization_id == org.id))
     if site is None:
@@ -63,10 +98,11 @@ def seed_demo(session: Session, org_id: uuid.UUID, agent_token: str) -> DemoIds:
 
     agent = session.scalar(select(Agent).where(Agent.organization_id == org.id))
     if agent is None:
-        agent = Agent(organization_id=org.id, site_id=site.id, name="agente-demo", token_hash="")
+        agent = Agent(organization_id=org.id, site_id=site.id, name="agente-demo")
         session.add(agent)
     agent.token_hash = hash_token(agent_token)
     agent.status = "active"
+    agent.enrolled_at = agent.enrolled_at or func.now()
     session.flush()
 
     camera = session.scalar(select(Camera).where(Camera.agent_id == agent.id))
@@ -113,15 +149,25 @@ def seed_demo(session: Session, org_id: uuid.UUID, agent_token: str) -> DemoIds:
 
 
 def main() -> int:
-    org_id = uuid.UUID(os.environ.get("ALESSIO_DASHBOARD_ORG_ID", str(DEFAULT_ORG_ID)))
+    org_id = uuid.UUID(os.environ.get("ALESSIO_DEMO_ORG_ID", str(DEFAULT_ORG_ID)))
     token = os.environ.get("ALESSIO_DEMO_AGENT_TOKEN")
     generated = token is None
     token = token or generate_agent_token()
+    email = os.environ.get("ALESSIO_DEMO_OWNER_EMAIL")
+    password = os.environ.get("ALESSIO_DEMO_OWNER_PASSWORD")
+    if email and password_problem(password or ""):
+        print(
+            f"erro: ALESSIO_DEMO_OWNER_PASSWORD: {password_problem(password or '')}",
+            file=sys.stderr,
+        )
+        return 1
     with get_sessionmaker()() as session:
-        ids = seed_demo(session, org_id, token)
+        ids = seed_demo(session, org_id, token, email, password)
     print(f"organização: {ids.organization_id}")
     print(f"agente:      {ids.agent_id}")
     print(f"câmera:      {ids.camera_id} (source_ref 'demo')")
+    if email:
+        print(f"login:       {email.lower()}")
     if generated:
         print(f"token do agente (guarde, não será exibido novamente): {token}")
     return 0

@@ -1,8 +1,9 @@
 # Fase 0: plataforma completa em uma máquina.
-#   cp .env.example deploy/.env   # e troque o token
+#   cp .env.example deploy/.env   # e troque o token e a senha
 #   ./deploy/scripts/download-sample-video.sh
 #   docker compose -f deploy/docker-compose.yml up --build -d
 #   docker compose -f deploy/docker-compose.yml --profile demo run --rm agent
+#   painel: http://localhost:8080 (login com ALESSIO_DEMO_OWNER_EMAIL / _PASSWORD)
 name: alessio
 
 services:
@@ -26,9 +27,14 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       ALESSIO_DATABASE_URL: postgresql+psycopg://alessio:${POSTGRES_PASSWORD:-alessio}@postgres:5432/alessio
-      ALESSIO_DASHBOARD_ORG_ID: ${ALESSIO_DASHBOARD_ORG_ID:-00000000-0000-4000-8000-000000000001}
       ALESSIO_DEMO_AGENT_TOKEN: ${ALESSIO_DEMO_AGENT_TOKEN:?defina ALESSIO_DEMO_AGENT_TOKEN em deploy/.env}
-    # Fase 0: migra e cadastra os dados de demonstração a cada subida (idempotente).
+      ALESSIO_DEMO_OWNER_EMAIL: ${ALESSIO_DEMO_OWNER_EMAIL:-demo@example.com}
+      ALESSIO_DEMO_OWNER_PASSWORD: ${ALESSIO_DEMO_OWNER_PASSWORD:?defina ALESSIO_DEMO_OWNER_PASSWORD em deploy/.env}
+      ALESSIO_CORS_ORIGINS: '["http://localhost:8080"]'
+      # localhost por HTTP. Em produção, atrás de HTTPS, deixe o padrão (true).
+      ALESSIO_COOKIE_SECURE: ${ALESSIO_COOKIE_SECURE:-false}
+    # Demonstração: migra e cadastra os dados de exemplo a cada subida (idempotente).
+    # Em produção, rode só as migrações e crie clientes com "python -m alessio_api.admin".
     command: >-
       sh -c "alembic upgrade head && python -m alessio_api.seed
       && exec uvicorn alessio_api.main:app --host 0.0.0.0 --port 8000"

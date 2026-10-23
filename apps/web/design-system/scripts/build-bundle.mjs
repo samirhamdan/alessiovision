@@ -13,7 +13,19 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const out = resolve(process.argv[2] ?? "dist-ds");
 mkdirSync(out, { recursive: true });
 
-const COMPONENTS = ["AppHeader", "Badge", "Button", "DataTable", "Logo", "Panel", "TextField"];
+const COMPONENTS = [
+  "AppHeader",
+  "Badge",
+  "Button",
+  "Callout",
+  "DataTable",
+  "Logo",
+  "NavTabs",
+  "Panel",
+  "SecretField",
+  "SelectField",
+  "TextField",
+];
 
 // "react" e "react/jsx-runtime" viram leituras de window.React.
 const reactGlobal = {

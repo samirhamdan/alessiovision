@@ -1,10 +1,10 @@
-"""API do painel web.
+"""API do painel: ocorrências, câmeras e métricas da organização ativa.
 
-Fase 0: sem login; tudo é filtrado pela organização ``ALESSIO_DASHBOARD_ORG_ID``.
-A Fase 1 troca ``current_organization`` por autenticação de usuários e RLS.
+Além do filtro explícito por ``organization_id``, o banco aplica Row-Level
+Security com a organização da sessão (``auth.current_principal``).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -13,25 +13,22 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from alessio_api import audit
+from alessio_api.auth import Principal, require
 from alessio_api.db import get_session
 from alessio_api.models import Agent, Camera, Occurrence, Zone, ZoneMetric1m
-from alessio_api.settings import get_settings
+from alessio_api.permissions import Permission
 
 router = APIRouter(prefix="/api/v1", tags=["painel"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def current_organization() -> UUID:
-    org_id = get_settings().dashboard_org_id
-    if org_id is None:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "ALESSIO_DASHBOARD_ORG_ID não configurado"
-        )
-    return org_id
+def _org(permission: Permission):
+    def dependency(principal: Annotated[Principal, Depends(require(permission))]) -> UUID:
+        return principal.organization_id
 
-
-OrgDep = Annotated[UUID, Depends(current_organization)]
+    return dependency
 
 
 class OccurrenceOut(BaseModel):
@@ -44,6 +41,7 @@ class OccurrenceOut(BaseModel):
     is_shadow: bool
     state: str
     review_status: str
+    reviewed_at: datetime | None
     started_at: datetime
     ended_at: datetime | None
     last_observed_at: datetime
@@ -74,9 +72,69 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _occurrence_out(o: Occurrence, camera_name: str, zone_name: str) -> OccurrenceOut:
+    return OccurrenceOut(
+        id=o.id,
+        camera_id=o.camera_id,
+        camera_name=camera_name,
+        zone_id=o.zone_id,
+        zone_name=zone_name,
+        event_type=o.event_type,
+        is_shadow=o.is_shadow,
+        state=o.state,
+        review_status=o.review_status,
+        reviewed_at=o.reviewed_at,
+        started_at=o.started_at,
+        ended_at=o.ended_at,
+        last_observed_at=o.last_observed_at,
+        close_reason=o.close_reason,
+        max_people=o.max_people,
+        max_confidence=o.max_confidence,
+    )
+
+
+class ReviewIn(BaseModel):
+    review_status: Literal["acknowledged", "resolved"]
+
+
+@router.patch("/occurrences/{occurrence_id}/review", response_model=OccurrenceOut)
+def review_occurrence(
+    occurrence_id: UUID,
+    body: ReviewIn,
+    principal: Annotated[Principal, Depends(require(Permission.OCCURRENCES_REVIEW))],
+    session: SessionDep,
+) -> OccurrenceOut:
+    row = session.execute(
+        select(Occurrence, Camera.name, Zone.name)
+        .join(Camera, Camera.id == Occurrence.camera_id)
+        .join(Zone, Zone.id == Occurrence.zone_id)
+        .where(
+            Occurrence.id == occurrence_id,
+            Occurrence.organization_id == principal.organization_id,
+        )
+        .with_for_update(of=Occurrence)
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ocorrência não encontrada")
+    occurrence = row[0]
+    occurrence.review_status = body.review_status
+    occurrence.reviewed_at = datetime.now(UTC)
+    occurrence.reviewed_by = principal.user.id
+    audit.record(
+        session,
+        occurrence.organization_id,
+        principal.user.id,
+        f"occurrence.{body.review_status}",
+        "occurrence",
+        occurrence.id,
+    )
+    session.commit()
+    return _occurrence_out(occurrence, row[1], row[2])
+
+
 @router.get("/occurrences", response_model=list[OccurrenceOut])
 def list_occurrences(
-    org_id: OrgDep,
+    org_id: Annotated[UUID, Depends(_org(Permission.OCCURRENCES_READ))],
     session: SessionDep,
     state: Literal["open", "closed"] | None = None,
     include_shadow: bool = False,
@@ -100,29 +158,15 @@ def list_occurrences(
     if before:
         query = query.where(Occurrence.started_at < before)
     return [
-        OccurrenceOut(
-            id=o.id,
-            camera_id=o.camera_id,
-            camera_name=camera_name,
-            zone_id=o.zone_id,
-            zone_name=zone_name,
-            event_type=o.event_type,
-            is_shadow=o.is_shadow,
-            state=o.state,
-            review_status=o.review_status,
-            started_at=o.started_at,
-            ended_at=o.ended_at,
-            last_observed_at=o.last_observed_at,
-            close_reason=o.close_reason,
-            max_people=o.max_people,
-            max_confidence=o.max_confidence,
-        )
+        _occurrence_out(o, camera_name, zone_name)
         for o, camera_name, zone_name in session.execute(query)
     ]
 
 
 @router.get("/cameras", response_model=list[CameraOut])
-def list_cameras(org_id: OrgDep, session: SessionDep) -> list[CameraOut]:
+def list_cameras(
+    org_id: Annotated[UUID, Depends(_org(Permission.CAMERAS_READ))], session: SessionDep
+) -> list[CameraOut]:
     rows = session.execute(
         select(Camera, Agent.last_seen_at)
         .join(Agent, Agent.id == Camera.agent_id)
@@ -146,7 +190,7 @@ def list_cameras(org_id: OrgDep, session: SessionDep) -> list[CameraOut]:
 @router.get("/zones/{zone_id}/metrics", response_model=list[ZoneMetricOut])
 def zone_metrics(
     zone_id: UUID,
-    org_id: OrgDep,
+    org_id: Annotated[UUID, Depends(_org(Permission.METRICS_READ))],
     session: SessionDep,
     start: Annotated[datetime, Query(alias="from")],
     end: Annotated[datetime, Query(alias="to")],

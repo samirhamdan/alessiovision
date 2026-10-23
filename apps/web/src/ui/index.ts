@@ -1,7 +1,11 @@
 export { AppHeader, type AppHeaderProps } from "./AppHeader";
 export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export { Button, type ButtonProps } from "./Button";
+export { Callout, type CalloutProps } from "./Callout";
 export { type Column, DataTable, type DataTableProps } from "./DataTable";
 export { Logo, type LogoProps, type LogoSources } from "./Logo";
+export { type NavItem, NavTabs, type NavTabsProps } from "./NavTabs";
 export { Panel, type PanelProps } from "./Panel";
+export { SecretField, type SecretFieldProps } from "./SecretField";
+export { SelectField, type SelectFieldProps, type SelectOption } from "./SelectField";
 export { TextField, type TextFieldProps } from "./TextField";

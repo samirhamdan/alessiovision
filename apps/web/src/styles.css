@@ -28,6 +28,105 @@ body {
   padding-top: var(--space-6);
 }
 
+.page-heading {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.page-heading p {
+  margin: 0;
+}
+
+.loading {
+  padding: var(--space-7) var(--space-4);
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.flush {
+  margin: 0;
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.inline-form .av-field {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* O botão alinha com os campos, abaixo dos rótulos. */
+.inline-form > .av-button {
+  margin-top: 22px;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.table-select {
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.header-select {
+  min-height: 32px;
+  font-size: 13px;
+  max-width: 220px;
+}
+
+/* Login e convite */
+.auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-6)
+    max(var(--space-4), env(safe-area-inset-left, 0px));
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 400px;
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.auth__brand {
+  display: flex;
+  justify-content: center;
+}
+
+.auth__title {
+  margin: 0;
+  text-align: center;
+  color: var(--ink);
+}
+
+.auth__form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.auth__note {
+  margin: 0;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
 .page-title {
   margin: 0;
   color: var(--ink);

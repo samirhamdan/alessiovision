@@ -5,12 +5,14 @@ import { Logo, type LogoSources } from "./Logo";
 export type AppHeaderProps = {
   /** Nome da área atual, ao lado do logo. */
   section?: string;
-  /** Conteúdo à direita: estado de atualização, usuário, ações. */
+  /** Conteúdo à direita: organização, usuário, ações. */
   aside?: ReactNode;
+  /** Navegação entre seções (NavTabs), numa linha abaixo do logo. */
+  nav?: ReactNode;
   logoSources?: LogoSources;
 };
 
-export function AppHeader({ section, aside, logoSources }: AppHeaderProps) {
+export function AppHeader({ section, aside, nav, logoSources }: AppHeaderProps) {
   return (
     <header className="av-app-header">
       <div className="av-app-header__brand">
@@ -18,6 +20,7 @@ export function AppHeader({ section, aside, logoSources }: AppHeaderProps) {
         {section && <span className="av-app-header__section text-heading">{section}</span>}
       </div>
       {aside && <div className="av-app-header__aside text-small">{aside}</div>}
+      {nav && <div className="av-app-header__nav">{nav}</div>}
     </header>
   );
 }

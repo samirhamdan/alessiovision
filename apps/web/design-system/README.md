@@ -56,7 +56,7 @@ Alessio Vision é uma plataforma de visão computacional para segurança e opera
 - Use os arquivos do grupo **Logos**, nunca redesenhe nem recolora. Fundo claro: as versões sem sufixo; fundo escuro: `-on-dark`, em que o navy vira claro e o azul é clareado.
 - `alessio-vision-horizontal` no cabeçalho da aplicação, com 36px de altura (mínimo 28px).
 - `alessio-vision-mark` (símbolo) em espaços quadrados: ícone do app, favicon, avatar do sistema em notificações. Mínimo 20px.
-- `alessio-vision-logo` (empilhado, com "Sistemas inteligentes") em capas, login e materiais impressos. Mínimo 120px de largura.
+- `alessio-vision-logo` (empilhado, com "Sistemas inteligentes"; `Logo variant="stacked"`) na tela de login, em capas e materiais impressos. Mínimo 120px de largura.
 - Área de proteção ao redor de qualquer versão: um quarto da altura do símbolo.
 - Não aplique sombra, contorno, gradiente ou rotação; não coloque sobre fotos sem um painel `surface` por trás.
 
@@ -67,4 +67,4 @@ Alessio Vision é uma plataforma de visão computacional para segurança e opera
 
 ## Componentes
 
-`AppHeader`, `Badge`, `Button`, `DataTable`, `Logo`, `Panel` e `TextField`, publicados em `window.AlessioUI`. No código, a fonte é `apps/web/src/ui/` do repositório alessiovision; os tokens vêm de `apps/web/design-system/tokens.json` e o CSS é gerado por `npm run tokens`.
+`AppHeader`, `Badge`, `Button`, `Callout`, `DataTable`, `Logo`, `NavTabs`, `Panel`, `SecretField`, `SelectField` e `TextField`, publicados em `window.AlessioUI`. No código, a fonte é `apps/web/src/ui/` do repositório alessiovision; os tokens vêm de `apps/web/design-system/tokens.json` e o CSS é gerado por `npm run tokens`.

@@ -1,7 +1,9 @@
-"""Modelo de dados da Fase 0.
+"""Modelo de dados.
 
-Toda tabela de negócio carrega ``organization_id`` diretamente, para filtros
-simples e para as políticas de Row-Level Security previstas na Fase 1.
+Toda tabela de dados de cliente carrega ``organization_id`` diretamente e é
+protegida por Row-Level Security no PostgreSQL (ver ``tenancy.py`` e a migração
+0002). As tabelas de identidade (organizações, usuários, vínculos e sessões)
+não têm RLS: o acesso a elas é controlado pela aplicação.
 """
 
 import uuid
@@ -60,20 +62,29 @@ class Site(Base):
 
 
 class Agent(Base):
+    """Agente ALESSIO. Nasce ``pending`` com um código de ativação de uso único;
+    ao ativar, recebe um token próprio (guardado só como SHA-256) e fica ``active``."""
+
     __tablename__ = "agents"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = _org_fk()
     site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
-    # SHA-256 do token: o token em si só é exibido uma vez, no cadastro.
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    status: Mapped[str] = mapped_column(String(20), default="active")
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    enrollment_code_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    enrollment_expires_at: Mapped[datetime | None]
+    status: Mapped[str] = mapped_column(String(20), default="pending")
     version: Mapped[str | None] = mapped_column(String(32))
+    hostname: Mapped[str | None] = mapped_column(String(255))
+    enrolled_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
     last_seen_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = _created_at()
 
-    __table_args__ = (CheckConstraint("status IN ('active', 'revoked')", name="agent_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'active', 'revoked')", name="agent_status"),
+    )
 
 
 class Camera(Base):
@@ -153,6 +164,10 @@ class Occurrence(Base):
     is_shadow: Mapped[bool] = mapped_column(default=False)
     state: Mapped[str] = mapped_column(String(20), default="open")
     review_status: Mapped[str] = mapped_column(String(20), default="new")
+    reviewed_at: Mapped[datetime | None]
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     started_at: Mapped[datetime]
     confirmed_at: Mapped[datetime]
     last_observed_at: Mapped[datetime]
@@ -227,3 +242,76 @@ class IngestedMessage(Base):
     agent_session_id: Mapped[uuid.UUID]
     type: Mapped[str] = mapped_column(String(32))
     received_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+
+class User(Base):
+    """Conta de acesso ao painel. ``password_hash`` fica vazio até o convite ser aceito."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    invite_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    invite_expires_at: Mapped[datetime | None]
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None]
+    last_login_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'invited', 'disabled')", name="user_status"),
+        CheckConstraint("email = lower(email)", name="user_email_lowercase"),
+    )
+
+
+class Membership(Base):
+    __tablename__ = "memberships"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'admin', 'operator', 'viewer')", name="membership_role"),
+    )
+
+
+class UserSession(Base):
+    """Sessão do painel. O cookie leva o token; o banco guarda só o SHA-256."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    active_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(index=True)
+    last_seen_at: Mapped[datetime | None]
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    organization_id: Mapped[uuid.UUID] = _org_fk(index=False)  # coberto por ix_audit_org_created
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str | None] = mapped_column(String(32))
+    target_id: Mapped[str | None] = mapped_column(String(64))
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (Index("ix_audit_org_created", "organization_id", text("created_at DESC")),)

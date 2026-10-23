@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": process.env.ALESSIO_API_URL ?? "http://localhost:8000",
+      "/agent": process.env.ALESSIO_API_URL ?? "http://localhost:8000",
     },
   },
 });
