@@ -1,0 +1,24 @@
+[project]
+name = "alessio-api"
+version = "0.1.0"
+description = "Plataforma ALESSIO na nuvem: ingestão do agente, ocorrências, métricas e API do painel."
+requires-python = ">=3.12"
+dependencies = [
+    "alessio-contracts",
+    "alembic>=1.13",
+    "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.5",
+    "sqlalchemy>=2.0.30",
+    "uvicorn[standard]>=0.30",
+]
+
+[tool.uv.sources]
+alessio-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/alessio_api"]

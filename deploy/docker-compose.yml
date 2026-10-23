@@ -1,0 +1,83 @@
+# Fase 0: plataforma completa em uma máquina.
+#   cp .env.example deploy/.env   # e troque o token
+#   ./deploy/scripts/download-sample-video.sh
+#   docker compose -f deploy/docker-compose.yml up --build -d
+#   docker compose -f deploy/docker-compose.yml --profile demo run --rm agent
+name: alessio
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alessio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alessio}
+      POSTGRES_DB: alessio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alessio -d alessio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      ALESSIO_DATABASE_URL: postgresql+psycopg://alessio:${POSTGRES_PASSWORD:-alessio}@postgres:5432/alessio
+      ALESSIO_DASHBOARD_ORG_ID: ${ALESSIO_DASHBOARD_ORG_ID:-00000000-0000-4000-8000-000000000001}
+      ALESSIO_DEMO_AGENT_TOKEN: ${ALESSIO_DEMO_AGENT_TOKEN:?defina ALESSIO_DEMO_AGENT_TOKEN em deploy/.env}
+    # Fase 0: migra e cadastra os dados de demonstração a cada subida (idempotente).
+    command: >-
+      sh -c "alembic upgrade head && python -m alessio_api.seed
+      && exec uvicorn alessio_api.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: ../apps/web
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Agente de demonstração: reproduz deploy/data/demo.avi como se fosse uma câmera.
+  # Em produção o agente roda na rede do cliente, com o próprio sources.json.
+  agent:
+    profiles: ["demo"]
+    build:
+      context: ..
+      dockerfile: apps/agent/Dockerfile
+    environment:
+      ALESSIO_API_URL: http://api:8000
+      ALESSIO_AGENT_TOKEN: ${ALESSIO_DEMO_AGENT_TOKEN:?defina ALESSIO_DEMO_AGENT_TOKEN em deploy/.env}
+      ALESSIO_SOURCES_FILE: /config/sources.json
+      # Sexta, 23:00 em São Paulo: fora do expediente da regra de demonstração.
+      ALESSIO_REPLAY_START: ${ALESSIO_REPLAY_START:-2026-10-23T23:00:00-03:00}
+      ALESSIO_REALTIME: ${ALESSIO_REALTIME:-false}
+    volumes:
+      - ./data:/data:ro
+      - ./agent/sources.json:/config/sources.json:ro
+      - agentstate:/state
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  agentstate:

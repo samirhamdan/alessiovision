@@ -1,0 +1,29 @@
+[project]
+name = "alessio-agent"
+version = "0.1.0"
+description = "Agente ALESSIO: lê câmeras, detecta pessoas, avalia regras e envia eventos e métricas."
+requires-python = ">=3.12"
+dependencies = [
+    "alessio-contracts",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.10,<5",  # 5.x removeu o HOG do módulo principal
+]
+
+[project.optional-dependencies]
+# Ultralytics é AGPL-3.0: apenas para avaliação interna até a revisão de licenças
+# (ver docs/architecture.md, decisão D1).
+ultralytics = ["ultralytics>=8.3"]
+
+[project.scripts]
+alessio-agent = "alessio_agent.cli:main"
+
+[tool.uv.sources]
+alessio-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/alessio_agent"]

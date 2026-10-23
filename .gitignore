@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+.env
+deploy/.env
+deploy/data/
+.alessio-agent/
+sources.json
+!deploy/agent/sources.json
+*.sqlite3

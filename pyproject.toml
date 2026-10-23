@@ -1,0 +1,39 @@
+[project]
+name = "alessio-workspace"
+version = "0.0.0"
+description = "Monorepo da plataforma ALESSIO (agente, API e contratos)."
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/contracts", "apps/agent", "apps/api"]
+
+[tool.uv.sources]
+alessio-contracts = { workspace = true }
+alessio-agent = { workspace = true }
+alessio-api = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "alessio-contracts",
+    "alessio-agent",
+    "alessio-api",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/contracts/tests", "apps/agent/tests", "apps/api/tests"]
+addopts = "--import-mode=importlib"
+
+[tool.ruff.lint.isort]
+known-first-party = ["alessio_contracts", "alessio_agent", "alessio_api"]
