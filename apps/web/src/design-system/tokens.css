@@ -1,0 +1,211 @@
+/* Gerado por design-system/scripts/build-tokens.mjs a partir de design-system/tokens.json. Não edite à mão. */
+
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../design-system/fonts/sora-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../../design-system/fonts/sora-latin-700-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../design-system/fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../design-system/fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../design-system/fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../design-system/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../design-system/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+}
+
+:root {
+  --brand-blue: #0059e2;
+  --brand-navy: #0d2652;
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-sunken: #eaeef5;
+  --border: #d8dfea;
+  --border-strong: #77849c;
+  --ink: #0d2652;
+  --ink-muted: #4a5a78;
+  --accent: var(--brand-blue);
+  --accent-hover: #0047b8;
+  --on-accent: #ffffff;
+  --accent-soft: #e5eeff;
+  --focus-ring: #0059e2;
+  --status-ok-bg: #dff3e7;
+  --status-ok-fg: #136b3a;
+  --status-warn-bg: #fcefd6;
+  --status-warn-fg: #8a4b00;
+  --status-danger-bg: #fbe3e3;
+  --status-danger-fg: #a51d24;
+  --status-neutral-bg: #e9edf3;
+  --status-neutral-fg: #3e4b63;
+  --shadow-raised: 0 1px 2px rgba(13, 38, 82, 0.08), 0 8px 24px rgba(13, 38, 82, 0.08);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --font-display: "Sora", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand-blue: #3d84ff;
+    --bg: #080e1a;
+    --surface: #0f1829;
+    --surface-sunken: #0b1322;
+    --border: #22304a;
+    --border-strong: #5f7091;
+    --ink: #e8edf7;
+    --ink-muted: #9aa8c2;
+    --accent: var(--brand-blue);
+    --accent-hover: #6aa0ff;
+    --on-accent: #06101f;
+    --accent-soft: #15294d;
+    --focus-ring: #8ab4ff;
+    --status-ok-bg: #12331f;
+    --status-ok-fg: #86d9a6;
+    --status-warn-bg: #3a2a0c;
+    --status-warn-fg: #f0bf6e;
+    --status-danger-bg: #42181b;
+    --status-danger-fg: #f4a3a6;
+    --status-neutral-bg: #1e2a40;
+    --status-neutral-fg: #c2cbdb;
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --brand-blue: #3d84ff;
+  --bg: #080e1a;
+  --surface: #0f1829;
+  --surface-sunken: #0b1322;
+  --border: #22304a;
+  --border-strong: #5f7091;
+  --ink: #e8edf7;
+  --ink-muted: #9aa8c2;
+  --accent: var(--brand-blue);
+  --accent-hover: #6aa0ff;
+  --on-accent: #06101f;
+  --accent-soft: #15294d;
+  --focus-ring: #8ab4ff;
+  --status-ok-bg: #12331f;
+  --status-ok-fg: #86d9a6;
+  --status-warn-bg: #3a2a0c;
+  --status-warn-fg: #f0bf6e;
+  --status-danger-bg: #42181b;
+  --status-danger-fg: #f4a3a6;
+  --status-neutral-bg: #1e2a40;
+  --status-neutral-fg: #c2cbdb;
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+.text-display {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.text-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 600;
+}
+
+.text-heading {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.text-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+.text-body-strong {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.text-small {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}
+
+.text-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.text-data {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}

@@ -1,4 +1,6 @@
-# ALESSIO
+<img src="apps/web/public/brand/alessio-vision-horizontal.png" alt="Alessio Vision" height="56" />
+
+# Alessio Vision
 
 Plataforma de visão computacional para segurança e operação: um agente analisa
 as câmeras (na nuvem ou na rede do cliente) e envia ocorrências e métricas para
@@ -13,7 +15,7 @@ passos estão em [`docs/architecture.md`](docs/architecture.md).
 packages/contracts   protocolo versionado agente ↔ nuvem (Pydantic)
 apps/agent           Agente ALESSIO (OpenCV, regras, métricas, fila local)
 apps/api             plataforma (FastAPI, SQLAlchemy, Alembic, PostgreSQL)
-apps/web             painel (React, TypeScript, Vite)
+apps/web             painel (React, TypeScript, Vite) e design system (apps/web/design-system)
 deploy               Docker Compose da Fase 0
 ```
 

@@ -7,3 +7,5 @@
 .git
 .alessio-agent
 deploy/data
+
+**/design-system/source/

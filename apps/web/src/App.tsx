@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { type Camera, type Occurrence, fetchCameras, fetchOccurrences } from "./api";
+import { AppHeader, Badge, type BadgeTone, type Column, DataTable, Panel } from "./ui";
 
 const REFRESH_MS = 5000;
 // O agente envia heartbeat a cada 30 s; sem notícias por 90 s, o painel avisa.
@@ -32,8 +33,8 @@ function formatDuration(start: string, end: string | null, now: number): string 
   return `${hours} h ${minutes % 60} min`;
 }
 
-function cameraHealth(camera: Camera, now: number): { label: string; tone: string } {
-  if (!camera.last_status_at) return { label: "Aguardando agente", tone: "muted" };
+function cameraHealth(camera: Camera, now: number): { label: string; tone: BadgeTone } {
+  if (!camera.last_status_at) return { label: "Aguardando agente", tone: "neutral" };
   if (now - Date.parse(camera.last_status_at) > AGENT_SILENCE_MS) {
     return { label: "Agente sem contato", tone: "danger" };
   }
@@ -45,8 +46,34 @@ function cameraHealth(camera: Camera, now: number): { label: string; tone: strin
     case "error":
       return { label: "Erro", tone: "danger" };
     default:
-      return { label: "Desconhecido", tone: "muted" };
+      return { label: "Desconhecido", tone: "neutral" };
   }
+}
+
+function occurrenceColumns(now: number): Column<Occurrence>[] {
+  return [
+    {
+      key: "state",
+      header: "Situação",
+      render: (o) =>
+        o.state === "open" ? <Badge tone="danger">Em andamento</Badge> : <Badge tone="neutral">Encerrada</Badge>,
+    },
+    { key: "type", header: "Tipo", render: (o) => EVENT_LABELS[o.event_type] ?? o.event_type },
+    {
+      key: "where",
+      header: "Câmera / zona",
+      render: (o) => (
+        <>
+          {o.camera_name}
+          <span className="secondary"> / {o.zone_name}</span>
+        </>
+      ),
+    },
+    { key: "start", header: "Início", data: true, render: (o) => formatDate(o.started_at) },
+    { key: "duration", header: "Duração", data: true, render: (o) => formatDuration(o.started_at, o.ended_at, now) },
+    { key: "people", header: "Pessoas (máx.)", align: "end", render: (o) => o.max_people },
+    { key: "end", header: "Encerramento", render: (o) => (o.close_reason ? CLOSE_LABELS[o.close_reason] : "—") },
+  ];
 }
 
 export function App() {
@@ -84,87 +111,56 @@ export function App() {
 
   return (
     <div className="page">
-      <header className="header">
-        <div>
-          <h1>ALESSIO</h1>
-          <p className="subtitle">Central de ocorrências</p>
-        </div>
-        <p className="refresh" aria-live="polite">
-          {error
-            ? `Falha ao atualizar: ${error}`
-            : updatedAt
-              ? `Atualizado às ${new Date(updatedAt).toLocaleTimeString("pt-BR")}`
-              : "Carregando…"}
-        </p>
-      </header>
+      <AppHeader
+        section="Segurança"
+        aside={
+          <span className={error ? "refresh--error" : undefined} aria-live="polite">
+            {error
+              ? `Falha ao atualizar: ${error}`
+              : updatedAt
+                ? `Atualizado às ${new Date(updatedAt).toLocaleTimeString("pt-BR")}`
+                : "Carregando…"}
+          </span>
+        }
+      />
 
-      <section aria-labelledby="cameras-title">
-        <h2 id="cameras-title">Câmeras</h2>
-        {cameras.length === 0 ? (
-          <p className="empty">Nenhuma câmera cadastrada.</p>
-        ) : (
-          <ul className="cameras">
-            {cameras.map((camera) => {
-              const health = cameraHealth(camera, now);
-              return (
-                <li key={camera.id} className="camera">
-                  <div className="camera-name">{camera.name}</div>
-                  <span className={`badge badge-${health.tone}`}>{health.label}</span>
-                  <div className="camera-meta">
-                    Último quadro analisado: {formatDate(camera.last_frame_at)}
-                    {camera.status_detail ? ` · ${camera.status_detail}` : ""}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <main className="page-main">
+        <h1 className="page-title text-display">Central de ocorrências</h1>
 
-      <section aria-labelledby="occurrences-title">
-        <h2 id="occurrences-title">
-          Ocorrências <span className="count">{open > 0 ? `${open} em andamento` : "nenhuma em andamento"}</span>
-        </h2>
-        {occurrences.length === 0 ? (
-          <p className="empty">Nenhuma ocorrência registrada.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Situação</th>
-                  <th>Tipo</th>
-                  <th>Câmera / zona</th>
-                  <th>Início</th>
-                  <th>Duração</th>
-                  <th className="num">Pessoas (máx.)</th>
-                  <th>Encerramento</th>
-                </tr>
-              </thead>
-              <tbody>
-                {occurrences.map((o) => (
-                  <tr key={o.id}>
-                    <td>
-                      <span className={`badge ${o.state === "open" ? "badge-danger" : "badge-muted"}`}>
-                        {o.state === "open" ? "Em andamento" : "Encerrada"}
-                      </span>
-                    </td>
-                    <td>{EVENT_LABELS[o.event_type] ?? o.event_type}</td>
-                    <td>
-                      {o.camera_name}
-                      <span className="secondary"> / {o.zone_name}</span>
-                    </td>
-                    <td>{formatDate(o.started_at)}</td>
-                    <td>{formatDuration(o.started_at, o.ended_at, now)}</td>
-                    <td className="num">{o.max_people}</td>
-                    <td>{o.close_reason ? CLOSE_LABELS[o.close_reason] : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+        <Panel title="Câmeras" meta={`${cameras.length} cadastrada${cameras.length === 1 ? "" : "s"}`}>
+          {cameras.length === 0 ? (
+            <p className="secondary">Nenhuma câmera cadastrada.</p>
+          ) : (
+            <ul className="cameras">
+              {cameras.map((camera) => {
+                const health = cameraHealth(camera, now);
+                return (
+                  <li key={camera.id} className="camera">
+                    <div className="camera__top">
+                      <h3 className="camera__name text-heading">{camera.name}</h3>
+                      <Badge tone={health.tone}>{health.label}</Badge>
+                    </div>
+                    <p className="camera__meta text-small">
+                      Último quadro analisado: <span className="text-data">{formatDate(camera.last_frame_at)}</span>
+                      {camera.status_detail ? ` · ${camera.status_detail}` : ""}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Ocorrências" meta={open > 0 ? `${open} em andamento` : "nenhuma em andamento"}>
+          <DataTable
+            caption="Ocorrências de segurança, mais recentes primeiro"
+            columns={occurrenceColumns(now)}
+            rows={occurrences}
+            rowKey={(o) => o.id}
+            empty="Nenhuma ocorrência registrada."
+          />
+        </Panel>
+      </main>
     </div>
   );
 }

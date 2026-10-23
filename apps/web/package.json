@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "tokens": "node design-system/scripts/build-tokens.mjs",
+    "build": "node design-system/scripts/build-tokens.mjs --check && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ds:bundle": "node design-system/scripts/build-bundle.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -17,6 +19,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "vite": "8.3.5"
   }
