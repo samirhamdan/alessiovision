@@ -56,6 +56,7 @@ class MeOut(BaseModel):
     active_organization_id: UUID | None
     role: str | None
     permissions: list[str]
+    is_platform_staff: bool
     memberships: list[MembershipOut]
 
 
@@ -73,6 +74,7 @@ def _me(db: Session, user: User, organization_id: UUID | None, role: str | None)
         active_organization_id=organization_id,
         role=role,
         permissions=sorted(ROLE_PERMISSIONS.get(role or "", frozenset())),
+        is_platform_staff=user.is_platform_staff,
         memberships=[
             MembershipOut(organization_id=m.organization_id, organization_name=name, role=m.role)
             for m, name in rows

@@ -8,6 +8,12 @@ organizações; isso é tarefa de quem opera a plataforma):
 
 A senha vem de ALESSIO_OWNER_PASSWORD ou é pedida no terminal. Se a pessoa já
 tiver conta, ela só ganha o papel de proprietária na nova organização.
+
+Dar ou tirar acesso à área Plataforma (equipe Alessio: contratos de comodato e
+equipamentos de todos os clientes):
+
+    python -m alessio_api.admin grant-staff --email voce@alessio.com.br
+    python -m alessio_api.admin revoke-staff --email voce@alessio.com.br
 """
 
 import argparse
@@ -72,6 +78,15 @@ def create_organization(
     return CreatedOrganization(organization, site, owner)
 
 
+def set_platform_staff(db: Session, email: str, enabled: bool) -> User:
+    user = db.scalar(select(User).where(User.email == email.strip().lower()))
+    if user is None:
+        raise LookupError(f"nenhuma conta com o e-mail {email}; crie a conta antes")
+    user.is_platform_staff = enabled
+    db.commit()
+    return user
+
+
 def _read_password() -> str:
     password = os.environ.get("ALESSIO_OWNER_PASSWORD")
     if password:
@@ -91,7 +106,24 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--owner-name", required=True)
     create.add_argument("--site-name", default="Matriz")
     create.add_argument("--timezone", default="America/Sao_Paulo")
+    for name, text in (
+        ("grant-staff", "dá acesso à área Plataforma"),
+        ("revoke-staff", "tira o acesso"),
+    ):
+        staff = commands.add_parser(name, help=text)
+        staff.add_argument("--email", required=True)
     args = parser.parse_args(argv)
+
+    if args.command in ("grant-staff", "revoke-staff"):
+        with get_sessionmaker()() as db:
+            try:
+                user = set_platform_staff(db, args.email, args.command == "grant-staff")
+            except LookupError as exc:
+                print(f"erro: {exc}", file=sys.stderr)
+                return 1
+        state = "tem" if user.is_platform_staff else "não tem mais"
+        print(f"{user.email} {state} acesso à área Plataforma.")
+        return 0
 
     with get_sessionmaker()() as db:
         existing = db.scalar(select(User).where(User.email == args.owner_email.strip().lower()))

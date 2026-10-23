@@ -192,6 +192,27 @@ ocioso ──presença fora do horário──▶ pendente ──duração mínim
 - `audit_logs` registra criação/ativação/revogação de agentes, mudanças de
   membros e reconhecimento de ocorrências.
 
+## 6b. Regras de negócio
+
+### R1. Infraestrutura própria ou em comodato
+
+- A infraestrutura de um cliente (câmeras, computador do agente, gravador,
+  switch, nobreak) pode ser **do cliente** ou **da Alessio em comodato**. A
+  propriedade é por equipamento: um mesmo cliente pode ter os dois tipos.
+- Equipamento em comodato pertence sempre a um **contrato de comodato** ativo
+  do mesmo cliente e pode ter **valor mensal** (soma na mensalidade) e **valor
+  de reposição**. Equipamento do cliente não tem contrato nem valor mensal. O
+  banco garante isso (restrição `equipment_ownership_contract`).
+- **Só a equipe Alessio cadastra e altera** equipamentos e contratos (área
+  Plataforma; acesso dado com `python -m alessio_api.admin grant-staff`). O
+  administrador do cliente só consulta (tela Equipamentos).
+- Encerrar um contrato não apaga nada: os itens que ainda estão no cliente
+  aparecem como "a devolver" até a devolução ser registrada. Contrato encerrado
+  não recebe equipamento novo.
+- O resumo considera só o que está no cliente (em uso ou em manutenção).
+- Fora por enquanto: manutenção e chamados, anexos (contrato e termo de
+  entrega em PDF) e a cobrança em si.
+
 ## 7. Plano de fases
 
 | Fase | Escopo | Situação |

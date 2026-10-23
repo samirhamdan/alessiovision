@@ -90,11 +90,13 @@ pela tela Membros do painel.
 
 Passo 8 — Configurar o Caddy
 ----------------------------
-Abra o Caddyfile:
+Nesta VPS o container do Caddy se chama alessio_caddy. Descubra qual
+arquivo ele le (a linha que termina em -> /etc/caddy/Caddyfile):
 
-    nano /opt/sdr-agent/infra/lite/Caddyfile
+    docker inspect alessio_caddy --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
 
-Adicione este bloco NO FINAL do arquivo:
+Abra esse arquivo (o caminho da esquerda) com o nano e adicione este
+bloco NO FINAL:
 
     alessio-vision.duckdns.org {
             reverse_proxy 172.18.0.1:5010
@@ -102,11 +104,12 @@ Adicione este bloco NO FINAL do arquivo:
 
 Salve com Ctrl+O, Enter, Ctrl+X.
 
-Reinicie o Caddy:
+Confira e recarregue o Caddy (sem derrubar os outros sites):
 
-    docker restart lite_default-caddy-1
+    docker exec alessio_caddy caddy validate --config /etc/caddy/Caddyfile
+    docker exec alessio_caddy caddy reload --config /etc/caddy/Caddyfile
 
-(Se o nome do container for diferente, veja com:  docker ps | grep caddy)
+Se o reload der erro, use:  docker restart alessio_caddy
 
 
 Passo 9 — Testar
@@ -120,6 +123,18 @@ Entre com o e-mail e a senha do Passo 7.
 
 Importante: o login so funciona por HTTPS (o cookie de sessao e
 "Secure"). Abrir por http:// ou pelo IP nao funciona, de proposito.
+
+
+Passo 9b — Acesso da equipe Alessio
+-----------------------------------
+Quem cadastra contratos de comodato e equipamentos dos clientes precisa
+do acesso a area Plataforma. A pessoa precisa ja ter conta (Passo 7 ou
+convite). Troque o e-mail:
+
+    docker compose exec api python -m alessio_api.admin grant-staff --email seu@email.com
+
+Saia e entre de novo no painel: aparece a aba Plataforma.
+Para tirar o acesso: troque grant-staff por revoke-staff.
 
 
 Passo 10 — Demonstracao (opcional)

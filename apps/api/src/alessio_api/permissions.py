@@ -12,6 +12,7 @@ class Permission(StrEnum):
     SITES_MANAGE = "sites:manage"
     MEMBERS_MANAGE = "members:manage"
     AUDIT_READ = "audit:read"
+    EQUIPMENT_READ = "equipment:read"
     OWNERS_MANAGE = "owners:manage"
 
 
@@ -24,6 +25,7 @@ _ADMIN = _OPERATOR | {
     Permission.SITES_MANAGE,
     Permission.MEMBERS_MANAGE,
     Permission.AUDIT_READ,
+    Permission.EQUIPMENT_READ,
 }
 _OWNER = _ADMIN | {Permission.OWNERS_MANAGE}
 

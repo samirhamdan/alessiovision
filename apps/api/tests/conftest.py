@@ -133,3 +133,19 @@ def client_as(demo, add_member):
     yield make
     for client in clients:
         client.__exit__(None, None, None)
+
+
+@pytest.fixture
+def staff_client(demo, session):
+    """Pessoa da equipe Alessio, sem vínculo com a organização demo."""
+    user = User(
+        email="equipe@example.com",
+        name="Equipe Alessio",
+        password_hash=hash_password(MEMBER_PASSWORD),
+        is_platform_staff=True,
+    )
+    session.add(user)
+    session.commit()
+    with TestClient(create_app(), headers=WEB) as client:
+        assert login(client, "equipe@example.com", MEMBER_PASSWORD).status_code == 200
+        yield client

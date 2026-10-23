@@ -128,6 +128,13 @@ def require(permission: Permission):
     return dependency
 
 
+def require_staff(principal: PrincipalDep) -> Principal:
+    """Equipe Alessio (área Plataforma). Não depende da organização ativa."""
+    if not principal.user.is_platform_staff:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "área restrita à equipe Alessio")
+    return principal
+
+
 _bearer = HTTPBearer(auto_error=False)
 
 

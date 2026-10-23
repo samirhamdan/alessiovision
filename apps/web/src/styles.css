@@ -172,3 +172,34 @@ body {
 .refresh--error {
   color: var(--status-danger-fg);
 }
+
+/* Resumo em números (equipamentos) */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.summary__item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.summary__item dt {
+  color: var(--ink-muted);
+}
+
+.summary__value {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  color: var(--ink);
+}
+
+/* Formulário em grade (cadastro de equipamento) */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}

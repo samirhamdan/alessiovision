@@ -9,6 +9,7 @@ export type Me = {
   active_organization_id: string | null;
   role: Role | null;
   permissions: string[];
+  is_platform_staff: boolean;
   memberships: Membership[];
 };
 
@@ -76,6 +77,70 @@ export type MemberCreated = {
   invite_token: string | null;
   invite_expires_at: string | null;
 };
+
+export type EquipmentKind = "camera" | "agent_host" | "recorder" | "switch" | "ups" | "other";
+export type Ownership = "client" | "comodato";
+export type EquipmentStatus = "in_use" | "maintenance" | "returned" | "retired";
+
+export type EquipmentInput = {
+  kind: EquipmentKind;
+  ownership: Ownership;
+  brand: string | null;
+  model: string | null;
+  serial_number: string | null;
+  site_id: string | null;
+  camera_id: string | null;
+  agent_id: string | null;
+  contract_id: string | null;
+  status: EquipmentStatus;
+  reference_value_cents: number | null;
+  monthly_fee_cents: number | null;
+  delivered_on: string | null;
+  returned_on: string | null;
+  notes: string | null;
+};
+
+export type Equipment = EquipmentInput & {
+  id: string;
+  site_name: string | null;
+  camera_name: string | null;
+  agent_name: string | null;
+  contract_number: string | null;
+  updated_at: string;
+};
+
+export type EquipmentSummary = {
+  total: number;
+  client_owned: number;
+  comodato: number;
+  comodato_monthly_cents: number;
+  comodato_reference_cents: number;
+};
+
+export type EquipmentList = { summary: EquipmentSummary; items: Equipment[] };
+
+export type Contract = {
+  id: string;
+  number: string;
+  starts_on: string;
+  ends_on: string | null;
+  status: "active" | "ended";
+  notes: string | null;
+  equipment_count: number;
+  monthly_fee_cents: number;
+  pending_return: number;
+};
+
+export type OrganizationOverview = {
+  id: string;
+  name: string;
+  status: string;
+  summary: EquipmentSummary;
+  active_contracts: number;
+};
+
+export type Option = { id: string; name: string };
+export type OrganizationContext = { organization: Option; sites: Option[]; cameras: Option[]; agents: Option[] };
 
 export const SESSION_EXPIRED_EVENT = "alessio:session-expired";
 
@@ -153,4 +218,21 @@ export const api = {
   changeRole: (userId: string, role: Role) => request<Member>("PATCH", `/api/v1/members/${userId}`, { role }),
   removeMember: (userId: string) => request<void>("DELETE", `/api/v1/members/${userId}`),
   reissueInvite: (userId: string) => request<MemberCreated>("POST", `/api/v1/members/${userId}/invite`),
+
+  equipment: () => request<EquipmentList>("GET", "/api/v1/equipment"),
+
+  platform: {
+    organizations: () => request<OrganizationOverview[]>("GET", "/api/v1/platform/organizations"),
+    context: (orgId: string) => request<OrganizationContext>("GET", `/api/v1/platform/organizations/${orgId}/context`),
+    equipment: (orgId: string) => request<EquipmentList>("GET", `/api/v1/platform/organizations/${orgId}/equipment`),
+    addEquipment: (orgId: string, body: EquipmentInput) =>
+      request<EquipmentList>("POST", `/api/v1/platform/organizations/${orgId}/equipment`, body),
+    updateEquipment: (orgId: string, id: string, body: EquipmentInput) =>
+      request<EquipmentList>("PATCH", `/api/v1/platform/organizations/${orgId}/equipment/${id}`, body),
+    contracts: (orgId: string) => request<Contract[]>("GET", `/api/v1/platform/organizations/${orgId}/contracts`),
+    addContract: (orgId: string, body: { number: string; starts_on: string; ends_on: string | null; notes: string | null }) =>
+      request<Contract[]>("POST", `/api/v1/platform/organizations/${orgId}/contracts`, body),
+    endContract: (orgId: string, id: string, endsOn: string) =>
+      request<Contract[]>("POST", `/api/v1/platform/organizations/${orgId}/contracts/${id}/end`, { ends_on: endsOn }),
+  },
 };

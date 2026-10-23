@@ -4,17 +4,26 @@ import { type Me, SESSION_EXPIRED_EVENT, api } from "./api";
 import { ROLE_LABELS } from "./format";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { EquipmentPage } from "./pages/EquipmentPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MembersPage } from "./pages/MembersPage";
 import { OccurrencesPage } from "./pages/OccurrencesPage";
+import { PlatformPage } from "./pages/PlatformPage";
 import { useRoute } from "./router";
 import { AppHeader, Button, Callout, type NavItem, NavTabs } from "./ui";
 
+// "staff": área da equipe Alessio, independente da organização ativa.
 const SECTIONS: Array<NavItem & { permission: string }> = [
   { href: "/", label: "Ocorrências", permission: "occurrences:read" },
   { href: "/agentes", label: "Agentes", permission: "agents:manage" },
+  { href: "/equipamentos", label: "Equipamentos", permission: "equipment:read" },
   { href: "/membros", label: "Membros", permission: "members:manage" },
+  { href: "/plataforma", label: "Plataforma", permission: "staff" },
 ];
+
+function canSee(me: Me, permission: string) {
+  return permission === "staff" ? me.is_platform_staff : me.permissions.includes(permission);
+}
 
 export function App() {
   const [path, navigate] = useRoute();
@@ -47,9 +56,9 @@ export function App() {
     return <LoginPage onLogin={setMe} />;
   }
 
-  const sections = SECTIONS.filter((section) => me.permissions.includes(section.permission));
+  const sections = SECTIONS.filter((section) => canSee(me, section.permission));
   const section = SECTIONS.find((s) => s.href === path);
-  const allowed = section ? me.permissions.includes(section.permission) : false;
+  const allowed = section ? canSee(me, section.permission) : false;
   const organization = me.memberships.find((m) => m.organization_id === me.active_organization_id);
 
   const logout = async () => {
@@ -102,9 +111,13 @@ export function App() {
 
       <main className="page-main">
         {switchError && <Callout tone="danger">{switchError}</Callout>}
-        {!me.active_organization_id ? (
+        {section?.href === "/plataforma" && allowed ? (
+          <PlatformPage />
+        ) : !me.active_organization_id ? (
           <Callout tone="neutral" title="Nenhuma organização ativa">
-            {me.memberships.length > 0
+            {me.is_platform_staff
+              ? "Você não faz parte de nenhuma organização. Use a área Plataforma para gerenciar os clientes."
+              : me.memberships.length > 0
               ? "Escolha uma organização no topo da página."
               : "Sua conta não faz parte de nenhuma organização no momento. Peça um convite a quem administra."}
           </Callout>
@@ -120,6 +133,8 @@ export function App() {
           </Callout>
         ) : section.href === "/agentes" ? (
           <AgentsPage key={me.active_organization_id} />
+        ) : section.href === "/equipamentos" ? (
+          <EquipmentPage key={me.active_organization_id} />
         ) : section.href === "/membros" ? (
           <MembersPage key={me.active_organization_id} me={me} />
         ) : (

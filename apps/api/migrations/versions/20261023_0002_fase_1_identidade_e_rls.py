@@ -11,7 +11,19 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from alessio_api.tenancy import TENANT_TABLES
+# Lista congelada: as tabelas que existiam nesta migração. Tabelas novas ganham RLS
+# nas próprias migrações.
+TENANT_TABLES = (
+    "sites",
+    "agents",
+    "cameras",
+    "zones",
+    "event_rules",
+    "occurrences",
+    "occurrence_updates",
+    "zone_metrics_1m",
+    "audit_logs",
+)
 
 revision: str = "0002"
 down_revision: str | None = "0001"

@@ -7,11 +7,12 @@ não têm RLS: o acesso a elas é controlado pela aplicação.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -259,6 +260,9 @@ class User(Base):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None]
     last_login_at: Mapped[datetime | None]
+    # Equipe Alessio: acessa a área Plataforma (contratos de comodato e equipamentos
+    # de todos os clientes). Concedido só por linha de comando.
+    is_platform_staff: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -315,3 +319,80 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (Index("ix_audit_org_created", "organization_id", text("created_at DESC")),)
+
+
+class ComodatoContract(Base):
+    """Contrato de comodato: equipamentos da Alessio emprestados ao cliente."""
+
+    __tablename__ = "comodato_contracts"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    organization_id: Mapped[uuid.UUID] = _org_fk(index=False)  # coberto pelo único (org, número)
+    number: Mapped[str] = mapped_column(String(64))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    notes: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'ended')", name="contract_status"),
+        UniqueConstraint("organization_id", "number"),
+    )
+
+
+class Equipment(Base):
+    """Equipamento instalado no cliente: dele próprio ou da Alessio em comodato.
+
+    Valores em centavos. ``monthly_fee_cents`` (quanto o comodato soma à
+    mensalidade) só existe em comodato; a cobrança em si ainda não está no sistema.
+    """
+
+    __tablename__ = "equipment"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    organization_id: Mapped[uuid.UUID] = _org_fk(index=False)  # coberto por ix_equipment_org_kind
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(20))
+    brand: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(100))
+    serial_number: Mapped[str | None] = mapped_column(String(100))
+    ownership: Mapped[str] = mapped_column(String(20))
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("comodato_contracts.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="in_use")
+    camera_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("cameras.id", ondelete="SET NULL")
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
+    reference_value_cents: Mapped[int | None]
+    monthly_fee_cents: Mapped[int | None]
+    delivered_on: Mapped[date | None] = mapped_column(Date)
+    returned_on: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('camera', 'agent_host', 'recorder', 'switch', 'ups', 'other')",
+            name="equipment_kind",
+        ),
+        CheckConstraint("ownership IN ('client', 'comodato')", name="equipment_ownership"),
+        CheckConstraint(
+            "status IN ('in_use', 'maintenance', 'returned', 'retired')", name="equipment_status"
+        ),
+        # Comodato sempre tem contrato; equipamento do cliente nunca tem contrato nem mensalidade.
+        CheckConstraint(
+            "(ownership = 'comodato' AND contract_id IS NOT NULL) OR "
+            "(ownership = 'client' AND contract_id IS NULL AND monthly_fee_cents IS NULL)",
+            name="equipment_ownership_contract",
+        ),
+        CheckConstraint(
+            "(reference_value_cents IS NULL OR reference_value_cents >= 0) AND "
+            "(monthly_fee_cents IS NULL OR monthly_fee_cents >= 0)",
+            name="equipment_values_positive",
+        ),
+        Index("ix_equipment_org_kind", "organization_id", "kind"),
+    )
