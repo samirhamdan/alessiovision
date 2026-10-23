@@ -118,10 +118,21 @@ class AfterHoursPresenceRule(_Strict):
 RuleConfig = AfterHoursPresenceRule
 
 
+Service = Literal["security", "operation"]
+
+
 class CameraConfig(_Strict):
+    """Uma câmera e o que o agente deve fazer com ela.
+
+    ``services`` é o que o cliente contratou (ou está testando) para a câmera:
+    ``security`` liga as regras de ocorrência, ``operation`` liga as métricas.
+    A nuvem só envia câmeras com algum serviço ativo.
+    """
+
     id: UUID
     name: str
     source_ref: str = Field(min_length=1, max_length=128)
+    services: list[Service] = Field(default_factory=lambda: ["security", "operation"])
     analysis_fps: float = Field(default=5.0, gt=0.0, le=30.0)
     min_confidence: float = Field(
         default=0.35, ge=0.0, le=1.0, description="Limiar usado nas métricas de ocupação."

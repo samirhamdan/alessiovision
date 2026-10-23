@@ -20,10 +20,19 @@ class CameraPipeline:
         self._detector = detector
         self._emit = emit
         zones = {zone.id: zone for zone in camera.zones}
-        self._aggregators = [OccupancyAggregator(camera.id, zone.id) for zone in camera.zones]
-        self._engines = [
-            AfterHoursPresenceEngine(camera.id, zones[rule.zone_id], rule) for rule in camera.rules
-        ]
+        # Só roda o que foi contratado: métricas são Vision Operação; regras, Vision Segurança.
+        operation = "operation" in camera.services
+        security = "security" in camera.services
+        self._metric_zones = camera.zones if operation else []
+        self._aggregators = [OccupancyAggregator(camera.id, zone.id) for zone in self._metric_zones]
+        self._engines = (
+            [
+                AfterHoursPresenceEngine(camera.id, zones[rule.zone_id], rule)
+                for rule in camera.rules
+            ]
+            if security
+            else []
+        )
         self._frame_seconds = 1.0 / camera.analysis_fps
         self._previous_timestamp: datetime | None = None
         self.last_frame_at: datetime | None = None
@@ -50,7 +59,7 @@ class CameraPipeline:
                 )
         self._previous_timestamp = self.last_frame_at = frame.timestamp
 
-        for zone, aggregator in zip(self.camera.zones, self._aggregators, strict=True):
+        for zone, aggregator in zip(self._metric_zones, self._aggregators, strict=True):
             count, _ = count_in_zone(detections, zone.polygon, self.camera.min_confidence)
             for payload in aggregator.observe(frame.timestamp, count, frame_seconds):
                 self._emit(payload)

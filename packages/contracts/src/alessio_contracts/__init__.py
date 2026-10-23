@@ -7,6 +7,7 @@ from alessio_contracts.config import (
     RuleConfig,
     Schedule,
     ScheduleWindow,
+    Service,
     ZoneConfig,
 )
 from alessio_contracts.enrollment import EnrollmentRequest, EnrollmentResult
@@ -54,6 +55,7 @@ __all__ = [
     "RuleConfig",
     "Schedule",
     "ScheduleWindow",
+    "Service",
     "ZoneConfig",
     "ZoneMetrics1m",
     "ZoneMetricsMessage",

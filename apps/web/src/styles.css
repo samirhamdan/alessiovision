@@ -176,7 +176,7 @@ body {
 /* Resumo em números (equipamentos) */
 .summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--space-4);
   margin: 0;
 }
@@ -202,4 +202,21 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4);
+}
+
+.service-cell {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.camera__services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.form-grid__action {
+  display: flex;
+  align-items: flex-end;
 }

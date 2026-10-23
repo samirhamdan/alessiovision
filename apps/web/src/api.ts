@@ -40,6 +40,7 @@ export type Camera = {
   last_frame_at: string | null;
   last_status_at: string | null;
   agent_last_seen_at: string | null;
+  services: VisionService[];
 };
 
 export type Site = { id: string; name: string; timezone: string };
@@ -76,6 +77,35 @@ export type MemberCreated = {
   member: Member;
   invite_token: string | null;
   invite_expires_at: string | null;
+};
+
+export type VisionService = "security" | "operation";
+
+export type ServiceLine = {
+  id: string;
+  camera_id: string;
+  service: VisionService;
+  source: "contract" | "trial";
+  contract_id: string | null;
+  contract_number: string | null;
+  monthly_fee_cents: number | null;
+  starts_at: string;
+  ends_at: string | null;
+  state: "active" | "scheduled" | "ended";
+};
+
+export type CameraServices = {
+  camera_id: string;
+  camera_name: string;
+  security: ServiceLine | null;
+  operation: ServiceLine | null;
+  trials_used: VisionService[];
+};
+
+export type ServicesOverview = {
+  cameras: CameraServices[];
+  history: ServiceLine[];
+  services_monthly_cents: number;
 };
 
 export type EquipmentKind = "camera" | "agent_host" | "recorder" | "switch" | "ups" | "other";
@@ -127,6 +157,7 @@ export type Contract = {
   status: "active" | "ended";
   notes: string | null;
   equipment_count: number;
+  service_count: number;
   monthly_fee_cents: number;
   pending_return: number;
 };
@@ -137,6 +168,9 @@ export type OrganizationOverview = {
   status: string;
   summary: EquipmentSummary;
   active_contracts: number;
+  cameras_with_vision: number;
+  services_monthly_cents: number;
+  total_monthly_cents: number;
 };
 
 export type Option = { id: string; name: string };
@@ -220,6 +254,7 @@ export const api = {
   reissueInvite: (userId: string) => request<MemberCreated>("POST", `/api/v1/members/${userId}/invite`),
 
   equipment: () => request<EquipmentList>("GET", "/api/v1/equipment"),
+  services: () => request<ServicesOverview>("GET", "/api/v1/services"),
 
   platform: {
     organizations: () => request<OrganizationOverview[]>("GET", "/api/v1/platform/organizations"),
@@ -232,6 +267,20 @@ export const api = {
     contracts: (orgId: string) => request<Contract[]>("GET", `/api/v1/platform/organizations/${orgId}/contracts`),
     addContract: (orgId: string, body: { number: string; starts_on: string; ends_on: string | null; notes: string | null }) =>
       request<Contract[]>("POST", `/api/v1/platform/organizations/${orgId}/contracts`, body),
+    services: (orgId: string) => request<ServicesOverview>("GET", `/api/v1/platform/organizations/${orgId}/services`),
+    contractService: (
+      orgId: string,
+      body: { camera_id: string; service: VisionService; contract_id: string; monthly_fee_cents: number | null; starts_on: string | null },
+    ) => request<ServicesOverview>("POST", `/api/v1/platform/organizations/${orgId}/services`, body),
+    startTrial: (orgId: string, cameraId: string, service: VisionService) =>
+      request<ServicesOverview>("POST", `/api/v1/platform/organizations/${orgId}/services/trial`, {
+        camera_id: cameraId,
+        service,
+      }),
+    endService: (orgId: string, lineId: string, endsOn: string | null) =>
+      request<ServicesOverview>("POST", `/api/v1/platform/organizations/${orgId}/services/${lineId}/end`, {
+        ends_on: endsOn,
+      }),
     endContract: (orgId: string, id: string, endsOn: string) =>
       request<Contract[]>("POST", `/api/v1/platform/organizations/${orgId}/contracts/${id}/end`, { ends_on: endsOn }),
   },

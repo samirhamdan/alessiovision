@@ -1,4 +1,4 @@
-import type { EquipmentKind, EquipmentStatus, Ownership, Role } from "./api";
+import type { EquipmentKind, EquipmentStatus, Ownership, Role, VisionService } from "./api";
 
 const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" });
 
@@ -89,4 +89,9 @@ export const EQUIPMENT_STATUS_LABELS: Record<EquipmentStatus, string> = {
   maintenance: "Em manutenção",
   returned: "Devolvido",
   retired: "Baixado",
+};
+
+export const SERVICE_LABELS: Record<VisionService, string> = {
+  security: "Vision Segurança",
+  operation: "Vision Operação",
 };

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { type Camera, type Occurrence, api } from "../api";
-import { formatDate, formatDuration } from "../format";
+import { formatDate, formatDuration, SERVICE_LABELS } from "../format";
 import { Badge, type BadgeTone, Button, Callout, type Column, DataTable, Panel } from "../ui";
 import { useResource } from "../useResource";
 
@@ -125,6 +125,17 @@ export function OccurrencesPage({ canReview }: { canReview: boolean }) {
                   <div className="camera__top">
                     <h3 className="camera__name text-heading">{camera.name}</h3>
                     <Badge tone={health.tone}>{health.label}</Badge>
+                  </div>
+                  <div className="camera__services">
+                    {camera.services.length === 0 ? (
+                      <span className="text-small secondary">Sem Vision</span>
+                    ) : (
+                      camera.services.map((service) => (
+                        <Badge key={service} tone="accent">
+                          {SERVICE_LABELS[service]}
+                        </Badge>
+                      ))
+                    )}
                   </div>
                   <p className="camera__meta text-small">
                     Último quadro analisado: <span className="text-data">{formatDate(camera.last_frame_at)}</span>

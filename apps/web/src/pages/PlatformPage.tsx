@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 
 import {
+  type CameraServices,
   type Contract,
   type Equipment,
   type EquipmentInput,
@@ -9,6 +10,8 @@ import {
   type Option,
   type OrganizationOverview,
   type Ownership,
+  type ServicesOverview,
+  type VisionService,
   api,
 } from "../api";
 import {
@@ -19,10 +22,11 @@ import {
   KIND_LABELS,
   OWNERSHIP_LABELS,
   parseMoney,
+  SERVICE_LABELS,
 } from "../format";
 import { Badge, Button, Callout, type Column, DataTable, Panel, SelectField, TextField } from "../ui";
 import { useResource } from "../useResource";
-import { EquipmentTable, SummaryStrip } from "./equipmentShared";
+import { EquipmentTable, ServicesTable, SummaryStrip } from "./equipmentShared";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -41,8 +45,9 @@ function OrganizationList({ onOpen }: { onOpen: (org: OrganizationOverview) => v
   const columns: Column<OrganizationOverview>[] = [
     { key: "name", header: "Cliente", render: (o) => o.name },
     { key: "total", header: "Em operação", align: "end", render: (o) => o.summary.total },
+    { key: "vision", header: "Câmeras com Vision", align: "end", render: (o) => o.cameras_with_vision },
     { key: "comodato", header: "Em comodato", align: "end", render: (o) => o.summary.comodato },
-    { key: "fee", header: "Comodato por mês", align: "end", render: (o) => formatMoney(o.summary.comodato_monthly_cents) },
+    { key: "fee", header: "Mensalidade", align: "end", render: (o) => formatMoney(o.total_monthly_cents) },
     { key: "contracts", header: "Contratos ativos", align: "end", render: (o) => o.active_contracts },
     {
       key: "open",
@@ -123,7 +128,11 @@ function ContractsPanel({
           <Badge tone="neutral">Encerrado</Badge>
         ),
     },
-    { key: "items", header: "Itens", align: "end", render: (c) => c.equipment_count },
+    {
+      key: "items",
+      header: "Itens",
+      render: (c) => `${c.service_count} serviço${c.service_count === 1 ? "" : "s"} · ${c.equipment_count} equip.`,
+    },
     { key: "fee", header: "Por mês", align: "end", render: (c) => formatMoney(c.monthly_fee_cents) },
     {
       key: "actions",
@@ -161,7 +170,7 @@ function ContractsPanel({
   ];
 
   return (
-    <Panel title="Contratos de comodato" meta={`${contracts.length}`}>
+    <Panel title="Contratos" meta={`${contracts.length}`}>
       <div className="stack">
         {error && <Callout tone="danger">{error}</Callout>}
         <form className="inline-form" onSubmit={create}>
@@ -171,7 +180,152 @@ function ContractsPanel({
             Novo contrato
           </Button>
         </form>
-        <DataTable caption="Contratos de comodato" columns={columns} rows={contracts} rowKey={(c) => c.id} empty="Nenhum contrato. Equipamentos em comodato precisam de um." />
+        <DataTable
+          caption="Contratos"
+          columns={columns}
+          rows={contracts}
+          rowKey={(c) => c.id}
+          empty="Nenhum contrato. Serviços Vision e equipamentos em comodato precisam de um."
+        />
+      </div>
+    </Panel>
+  );
+}
+
+// --- Serviços Vision por câmera --------------------------------------------------------------
+
+function ServicesPanel({
+  orgId,
+  overview,
+  contracts,
+  onChange,
+}: {
+  orgId: string;
+  overview: ServicesOverview;
+  contracts: Contract[];
+  onChange: (next: ServicesOverview) => void;
+}) {
+  const active = contracts.filter((c) => c.status === "active");
+  const [cameraId, setCameraId] = useState("");
+  const [service, setService] = useState<VisionService>("security");
+  const [contractId, setContractId] = useState("");
+  const [fee, setFee] = useState("");
+  const [startsOn, setStartsOn] = useState("");
+  const [ending, setEnding] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const feeValue = parseMoney(fee);
+
+  const run = async (action: () => Promise<ServicesOverview>, done?: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      onChange(await action());
+      if (done) setNotice(done);
+      return true;
+    } catch (err) {
+      setError(errorText(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const contract = async (event: FormEvent) => {
+    event.preventDefault();
+    const ok = await run(
+      () =>
+        api.platform.contractService(orgId, {
+          camera_id: cameraId,
+          service,
+          contract_id: contractId,
+          monthly_fee_cents: feeValue,
+          starts_on: startsOn || null,
+        }),
+      "Serviço contratado. O agente passa a analisar a câmera na próxima vez que carregar a configuração.",
+    );
+    if (ok) setFee("");
+  };
+
+  const actions = (camera: CameraServices, which: VisionService) => {
+    const line = camera[which];
+    if (line) {
+      return ending === line.id ? (
+        <span className="row-actions">
+          <Button size="sm" variant="danger" disabled={busy} onClick={() => run(() => api.platform.endService(orgId, line.id, null)).then(() => setEnding(null))}>
+            Encerrar agora
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEnding(null)}>
+            Cancelar
+          </Button>
+        </span>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setEnding(line.id)}>
+          Encerrar
+        </Button>
+      );
+    }
+    return (
+      <span className="row-actions">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            setCameraId(camera.camera_id);
+            setService(which);
+          }}
+        >
+          Contratar
+        </Button>
+        {!camera.trials_used.includes(which) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => run(() => api.platform.startTrial(orgId, camera.camera_id, which), `Teste de ${SERVICE_LABELS[which]} liberado por 3 dias.`)}
+          >
+            Teste 3 dias
+          </Button>
+        )}
+      </span>
+    );
+  };
+
+  const cameraOptions = [{ value: "", label: "Escolha a câmera" }, ...overview.cameras.map((c) => ({ value: c.camera_id, label: c.camera_name }))];
+  const serviceOptions = (Object.keys(SERVICE_LABELS) as VisionService[]).map((k) => ({ value: k, label: SERVICE_LABELS[k] }));
+  const contractOptions = [
+    { value: "", label: active.length ? "Escolha o contrato" : "Crie um contrato acima" },
+    ...active.map((c) => ({ value: c.id, label: c.number })),
+  ];
+
+  return (
+    <Panel title="Serviços Vision por câmera" meta={`${formatMoney(overview.services_monthly_cents)}/mês`}>
+      <div className="stack">
+        {error && <Callout tone="danger">{error}</Callout>}
+        {notice && <Callout tone="ok">{notice}</Callout>}
+        <form className="form-grid" onSubmit={contract}>
+          <SelectField id="svc-camera" label="Câmera" options={cameraOptions} value={cameraId} onChange={(e) => setCameraId(e.target.value)} />
+          <SelectField id="svc-service" label="Serviço" options={serviceOptions} value={service} onChange={(e) => setService(e.target.value as VisionService)} />
+          <SelectField id="svc-contract" label="Contrato" options={contractOptions} value={contractId} onChange={(e) => setContractId(e.target.value)} />
+          <TextField
+            id="svc-fee"
+            label="Valor mensal negociado (R$)"
+            inputMode="decimal"
+            placeholder="120,00"
+            error={Number.isNaN(feeValue) ? "Use um valor como 120,00." : undefined}
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+          />
+          <TextField id="svc-start" label="Início (vazio = agora)" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+          <div className="form-grid__action">
+            <Button type="submit" disabled={busy || !cameraId || !contractId || Number.isNaN(feeValue)}>
+              Contratar serviço
+            </Button>
+          </div>
+        </form>
+        <ServicesTable overview={overview} actions={actions} />
       </div>
     </Panel>
   );
@@ -258,11 +412,13 @@ function EquipmentPanel({
   orgId,
   contracts,
   context,
+  servicesMonthly,
   onSaved,
 }: {
   orgId: string;
   contracts: Contract[];
   context: { sites: Option[]; cameras: Option[]; agents: Option[] };
+  servicesMonthly: number | undefined;
   /** Itens e valores dos contratos mudam junto com os equipamentos. */
   onSaved: () => void;
 }) {
@@ -334,7 +490,7 @@ function EquipmentPanel({
     <>
       {equipment.data && (
         <Panel title="Resumo do cliente">
-          <SummaryStrip summary={equipment.data.summary} />
+          <SummaryStrip summary={equipment.data.summary} servicesMonthly={servicesMonthly} />
         </Panel>
       )}
       <Panel
@@ -420,8 +576,12 @@ function EquipmentPanel({
 function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack: () => void }) {
   const contracts = useResource(() => api.platform.contracts(org.id));
   const context = useResource(() => api.platform.context(org.id));
+  const services = useResource(() => api.platform.services(org.id));
   const [contractList, setContractList] = useState<Contract[] | null>(null);
+  const [servicesOverview, setServicesOverview] = useState<ServicesOverview | null>(null);
   const currentContracts = contractList ?? contracts.data ?? [];
+  const currentServices = servicesOverview ?? services.data;
+  const refreshContracts = () => api.platform.contracts(org.id).then(setContractList, () => undefined);
 
   return (
     <>
@@ -439,14 +599,36 @@ function OrganizationDetail({ org, onBack }: { org: OrganizationOverview; onBack
         </p>
         <h1 className="page-title text-display">{org.name}</h1>
       </div>
-      {(contracts.error || context.error) && <Callout tone="danger">Falha ao carregar: {contracts.error ?? context.error}</Callout>}
-      <ContractsPanel orgId={org.id} contracts={currentContracts} onChange={setContractList} />
+      {(contracts.error || context.error || services.error) && (
+        <Callout tone="danger">Falha ao carregar: {contracts.error ?? context.error ?? services.error}</Callout>
+      )}
+      <ContractsPanel
+        orgId={org.id}
+        contracts={currentContracts}
+        onChange={(next) => {
+          setContractList(next);
+          // Encerrar um contrato encerra os serviços dele.
+          api.platform.services(org.id).then(setServicesOverview, () => undefined);
+        }}
+      />
+      {currentServices && (
+        <ServicesPanel
+          orgId={org.id}
+          overview={currentServices}
+          contracts={currentContracts}
+          onChange={(next) => {
+            setServicesOverview(next);
+            void refreshContracts();
+          }}
+        />
+      )}
       {context.data && (
         <EquipmentPanel
           orgId={org.id}
           contracts={currentContracts}
           context={context.data}
-          onSaved={() => api.platform.contracts(org.id).then(setContractList, () => undefined)}
+          servicesMonthly={currentServices?.services_monthly_cents}
+          onSaved={() => void refreshContracts()}
         />
       )}
     </>

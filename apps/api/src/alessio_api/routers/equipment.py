@@ -1,4 +1,4 @@
-"""Equipamentos e contratos de comodato.
+"""Equipamentos e contratos (comodato + serviços Vision no mesmo contrato).
 
 Regras de negócio:
 - A infraestrutura de um cliente pode ser dele ou da Alessio em comodato, e os
@@ -26,8 +26,13 @@ from sqlalchemy.orm import Session
 from alessio_api import audit
 from alessio_api.auth import Principal, require, require_staff
 from alessio_api.db import get_session
-from alessio_api.models import Agent, Camera, ComodatoContract, Equipment, Organization, Site
+from alessio_api.models import Agent, Camera, Contract, Equipment, Organization, Site
 from alessio_api.permissions import Permission
+from alessio_api.routers.services import (
+    end_contract_services,
+    services_monthly_cents,
+    services_overview,
+)
 from alessio_api.tenancy import set_tenant
 
 router = APIRouter(prefix="/api/v1", tags=["equipamentos"])
@@ -70,6 +75,8 @@ class ContractOut(BaseModel):
     status: Literal["active", "ended"]
     notes: str | None
     equipment_count: int
+    service_count: int
+    # Comodato em uso + serviços Vision ativos deste contrato.
     monthly_fee_cents: int
     pending_return: int
 
@@ -143,6 +150,10 @@ class OrganizationOverview(BaseModel):
     status: str
     summary: EquipmentSummary
     active_contracts: int
+    cameras_with_vision: int
+    services_monthly_cents: int
+    # Mensalidade = serviços Vision + comodato (a cobrança em si ainda não está no sistema).
+    total_monthly_cents: int
 
 
 class OptionOut(BaseModel):
@@ -164,11 +175,11 @@ IN_PLACE = ("in_use", "maintenance")  # o que ainda está no cliente
 
 def _list_equipment(db: Session, organization_id: UUID) -> EquipmentList:
     rows = db.execute(
-        select(Equipment, Site.name, Camera.name, Agent.name, ComodatoContract.number)
+        select(Equipment, Site.name, Camera.name, Agent.name, Contract.number)
         .outerjoin(Site, Site.id == Equipment.site_id)
         .outerjoin(Camera, Camera.id == Equipment.camera_id)
         .outerjoin(Agent, Agent.id == Equipment.agent_id)
-        .outerjoin(ComodatoContract, ComodatoContract.id == Equipment.contract_id)
+        .outerjoin(Contract, Contract.id == Equipment.contract_id)
         .where(Equipment.organization_id == organization_id)
         .order_by(Equipment.kind, Equipment.created_at)
     ).all()
@@ -238,9 +249,9 @@ def _check_links(db: Session, organization_id: UUID, body: EquipmentIn, new: boo
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{label} não encontrado")
     if body.contract_id is not None:
         contract = db.scalar(
-            select(ComodatoContract).where(
-                ComodatoContract.id == body.contract_id,
-                ComodatoContract.organization_id == organization_id,
+            select(Contract).where(
+                Contract.id == body.contract_id,
+                Contract.organization_id == organization_id,
             )
         )
         if contract is None:
@@ -280,19 +291,30 @@ def platform_organizations(staff: StaffDep, db: SessionDep) -> list[Organization
         set_tenant(db, organization.id)
         active = db.scalar(
             select(func.count())
-            .select_from(ComodatoContract)
+            .select_from(Contract)
             .where(
-                ComodatoContract.organization_id == organization.id,
-                ComodatoContract.status == "active",
+                Contract.organization_id == organization.id,
+                Contract.status == "active",
             )
         )
+        summary = _list_equipment(db, organization.id).summary
+        services = services_overview(db, organization.id)
         overview.append(
             OrganizationOverview(
                 id=organization.id,
                 name=organization.name,
                 status=organization.status,
-                summary=_list_equipment(db, organization.id).summary,
+                summary=summary,
                 active_contracts=active or 0,
+                cameras_with_vision=sum(
+                    1
+                    for c in services.cameras
+                    if (c.security and c.security.state == "active")
+                    or (c.operation and c.operation.state == "active")
+                ),
+                services_monthly_cents=services.services_monthly_cents,
+                total_monthly_cents=services.services_monthly_cents
+                + summary.comodato_monthly_cents,
             )
         )
     return overview
@@ -389,17 +411,19 @@ def platform_update_equipment(
 
 def _contracts(db: Session, organization_id: UUID) -> list[ContractOut]:
     contracts = db.scalars(
-        select(ComodatoContract)
-        .where(ComodatoContract.organization_id == organization_id)
-        .order_by(ComodatoContract.status, ComodatoContract.starts_on.desc())
+        select(Contract)
+        .where(Contract.organization_id == organization_id)
+        .order_by(Contract.status, Contract.starts_on.desc())
     ).all()
     equipment = db.scalars(
         select(Equipment).where(
             Equipment.organization_id == organization_id, Equipment.contract_id.is_not(None)
         )
     ).all()
+    service_lines = services_overview(db, organization_id).history
     result = []
     for contract in contracts:
+        lines = [line for line in service_lines if line.contract_id == contract.id]
         items = [e for e in equipment if e.contract_id == contract.id]
         in_place = [e for e in items if e.status in IN_PLACE]
         result.append(
@@ -411,7 +435,9 @@ def _contracts(db: Session, organization_id: UUID) -> list[ContractOut]:
                 status=contract.status,
                 notes=contract.notes,
                 equipment_count=len(items),
-                monthly_fee_cents=sum(e.monthly_fee_cents or 0 for e in in_place),
+                service_count=sum(1 for line in lines if line.state != "ended"),
+                monthly_fee_cents=sum(e.monthly_fee_cents or 0 for e in in_place)
+                + services_monthly_cents(lines, contract.id),
                 pending_return=len(in_place) if contract.status == "ended" else 0,
             )
         )
@@ -433,7 +459,7 @@ def platform_add_contract(
     organization_id: UUID, body: ContractIn, staff: StaffDep, db: SessionDep
 ) -> list[ContractOut]:
     organization = _organization(db, organization_id)
-    contract = ComodatoContract(organization_id=organization.id, **body.model_dump())
+    contract = Contract(organization_id=organization.id, **body.model_dump())
     db.add(contract)
     try:
         db.flush()
@@ -464,10 +490,10 @@ def platform_end_contract(
     """Encerra o contrato. Os equipamentos continuam listados até a devolução ser registrada."""
     organization = _organization(db, organization_id)
     contract = db.scalar(
-        select(ComodatoContract)
+        select(Contract)
         .where(
-            ComodatoContract.id == contract_id,
-            ComodatoContract.organization_id == organization.id,
+            Contract.id == contract_id,
+            Contract.organization_id == organization.id,
         )
         .with_for_update()
     )
@@ -479,6 +505,7 @@ def platform_end_contract(
         )
     contract.status = "ended"
     contract.ends_on = body.ends_on
+    end_contract_services(db, contract)
     audit.record(db, organization.id, staff.user.id, "contract.ended", "contract", contract.id)
     db.commit()
     return _contracts(db, organization.id)

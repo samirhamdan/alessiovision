@@ -16,7 +16,8 @@ def contract(staff_client, demo):
         json={"number": "CT-2026-001", "starts_on": "2026-10-01"},
     )
     assert response.status_code == 201, response.text
-    return response.json()[0]
+    [created] = [c for c in response.json() if c["number"] == "CT-2026-001"]
+    return created
 
 
 def add(staff_client, org_id, **fields):
@@ -83,7 +84,7 @@ def test_mixed_ownership_in_the_same_client(staff_client, client, demo, contract
         if o["id"] == str(demo.organization_id)
     ]
     assert overview["summary"]["comodato_monthly_cents"] == 15000
-    assert overview["active_contracts"] == 1
+    assert overview["active_contracts"] == 2  # o contrato "DEMO" do seed e o CT-2026-001
 
 
 @pytest.mark.parametrize(
@@ -152,8 +153,9 @@ def test_ending_a_contract_lists_what_must_be_returned(staff_client, demo, contr
         f"{base(demo.organization_id)}/contracts/{contract['id']}/end",
         json={"ends_on": "2026-12-31"},
     ).json()
-    assert contracts[0]["status"] == "ended"
-    assert contracts[0]["pending_return"] == 1
+    [ended] = [c for c in contracts if c["number"] == "CT-2026-001"]
+    assert ended["status"] == "ended"
+    assert ended["pending_return"] == 1
 
     # Contrato encerrado não recebe equipamento novo.
     refused = add(
@@ -175,7 +177,8 @@ def test_ending_a_contract_lists_what_must_be_returned(staff_client, demo, contr
     assert returned.json()["items"][0]["returned_on"] is not None
     assert returned.json()["summary"]["comodato"] == 0
     contracts = staff_client.get(f"{base(demo.organization_id)}/contracts").json()
-    assert contracts[0]["pending_return"] == 0
+    [ended] = [c for c in contracts if c["number"] == "CT-2026-001"]
+    assert ended["pending_return"] == 0
 
 
 def test_viewer_cannot_see_equipment(client_as):

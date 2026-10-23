@@ -31,7 +31,8 @@ TENANT_TABLES = (
     "occurrence_updates",
     "zone_metrics_1m",
     "audit_logs",
-    "comodato_contracts",
+    "contracts",
+    "camera_services",
     "equipment",
 )
 

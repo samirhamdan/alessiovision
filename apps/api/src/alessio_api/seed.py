@@ -11,6 +11,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -19,6 +20,8 @@ from alessio_api.db import get_sessionmaker
 from alessio_api.models import (
     Agent,
     Camera,
+    CameraService,
+    Contract,
     EventRule,
     Membership,
     Organization,
@@ -143,6 +146,34 @@ def seed_demo(
         )
         session.add(rule)
         session.flush()
+
+    # A câmera demo tem Vision Segurança e Vision Operação contratados (regra R2).
+    contract = session.scalar(
+        select(Contract).where(Contract.organization_id == org.id, Contract.number == "DEMO")
+    )
+    if contract is None:
+        contract = Contract(organization_id=org.id, number="DEMO", starts_on=date(2026, 1, 1))
+        session.add(contract)
+        session.flush()
+    for service in ("security", "operation"):
+        line = session.scalar(
+            select(CameraService).where(
+                CameraService.camera_id == camera.id,
+                CameraService.service == service,
+                CameraService.contract_id == contract.id,
+            )
+        )
+        if line is None:
+            session.add(
+                CameraService(
+                    organization_id=org.id,
+                    camera_id=camera.id,
+                    service=service,
+                    source="contract",
+                    contract_id=contract.id,
+                    starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+                )
+            )
 
     session.commit()
     return DemoIds(org.id, agent.id, camera.id, zone.id, rule.id)

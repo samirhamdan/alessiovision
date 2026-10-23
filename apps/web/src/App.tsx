@@ -16,7 +16,7 @@ import { AppHeader, Button, Callout, type NavItem, NavTabs } from "./ui";
 const SECTIONS: Array<NavItem & { permission: string }> = [
   { href: "/", label: "Ocorrências", permission: "occurrences:read" },
   { href: "/agentes", label: "Agentes", permission: "agents:manage" },
-  { href: "/equipamentos", label: "Equipamentos", permission: "equipment:read" },
+  { href: "/contrato", label: "Contrato", permission: "equipment:read" },
   { href: "/membros", label: "Membros", permission: "members:manage" },
   { href: "/plataforma", label: "Plataforma", permission: "staff" },
 ];
@@ -133,7 +133,7 @@ export function App() {
           </Callout>
         ) : section.href === "/agentes" ? (
           <AgentsPage key={me.active_organization_id} />
-        ) : section.href === "/equipamentos" ? (
+        ) : section.href === "/contrato" ? (
           <EquipmentPage key={me.active_organization_id} />
         ) : section.href === "/membros" ? (
           <MembersPage key={me.active_organization_id} me={me} />

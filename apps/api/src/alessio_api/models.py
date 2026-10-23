@@ -321,10 +321,11 @@ class AuditLog(Base):
     __table_args__ = (Index("ix_audit_org_created", "organization_id", text("created_at DESC")),)
 
 
-class ComodatoContract(Base):
-    """Contrato de comodato: equipamentos da Alessio emprestados ao cliente."""
+class Contract(Base):
+    """Contrato do cliente com a Alessio: equipamentos em comodato e serviços Vision
+    por câmera ficam no mesmo contrato (regra R2)."""
 
-    __tablename__ = "comodato_contracts"
+    __tablename__ = "contracts"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = _org_fk(index=False)  # coberto pelo único (org, número)
@@ -338,6 +339,49 @@ class ComodatoContract(Base):
     __table_args__ = (
         CheckConstraint("status IN ('active', 'ended')", name="contract_status"),
         UniqueConstraint("organization_id", "number"),
+    )
+
+
+class CameraService(Base):
+    """Serviço Vision de uma câmera: Segurança ou Operação, por contrato ou em teste.
+
+    Ativo enquanto ``starts_at <= agora < ends_at`` (``ends_at`` vazio = sem prazo).
+    No teste, ``ends_at`` é o fim do período de teste e não há contrato nem valor.
+    """
+
+    __tablename__ = "camera_services"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    organization_id: Mapped[uuid.UUID] = _org_fk(index=False)  # coberto por ix_camera_services_org
+    camera_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    service: Mapped[str] = mapped_column(String(20))
+    source: Mapped[str] = mapped_column(String(20))
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("contracts.id", ondelete="RESTRICT"), index=True
+    )
+    monthly_fee_cents: Mapped[int | None]
+    starts_at: Mapped[datetime]
+    ends_at: Mapped[datetime | None]
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("service IN ('security', 'operation')", name="camera_service_kind"),
+        CheckConstraint("source IN ('contract', 'trial')", name="camera_service_source"),
+        CheckConstraint(
+            "(source = 'contract' AND contract_id IS NOT NULL) OR "
+            "(source = 'trial' AND contract_id IS NULL AND monthly_fee_cents IS NULL "
+            "AND ends_at IS NOT NULL)",
+            name="camera_service_source_rules",
+        ),
+        CheckConstraint(
+            "monthly_fee_cents IS NULL OR monthly_fee_cents >= 0",
+            name="camera_service_fee_positive",
+        ),
+        CheckConstraint("ends_at IS NULL OR ends_at > starts_at", name="camera_service_period"),
+        Index("ix_camera_services_org", "organization_id", "camera_id", "service"),
     )
 
 
@@ -359,7 +403,7 @@ class Equipment(Base):
     serial_number: Mapped[str | None] = mapped_column(String(100))
     ownership: Mapped[str] = mapped_column(String(20))
     contract_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("comodato_contracts.id", ondelete="RESTRICT"), index=True
+        ForeignKey("contracts.id", ondelete="RESTRICT"), index=True
     )
     status: Mapped[str] = mapped_column(String(20), default="in_use")
     camera_id: Mapped[uuid.UUID | None] = mapped_column(

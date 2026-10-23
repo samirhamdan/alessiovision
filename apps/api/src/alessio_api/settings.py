@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     session_hours: int = 12
     invite_hours: int = 72
     enrollment_hours: int = 24
+    # Teste grátis de serviço Vision por câmera (regra R2).
+    trial_days: int = 3
     max_failed_logins: int = 5
     lockout_minutes: int = 15
 

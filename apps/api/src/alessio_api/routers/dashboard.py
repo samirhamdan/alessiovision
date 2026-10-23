@@ -18,6 +18,7 @@ from alessio_api.auth import Principal, require
 from alessio_api.db import get_session
 from alessio_api.models import Agent, Camera, Occurrence, Zone, ZoneMetric1m
 from alessio_api.permissions import Permission
+from alessio_api.services import active_services
 
 router = APIRouter(prefix="/api/v1", tags=["painel"])
 
@@ -58,6 +59,7 @@ class CameraOut(BaseModel):
     last_frame_at: datetime | None
     last_status_at: datetime | None
     agent_last_seen_at: datetime | None
+    services: list[str]
 
 
 class ZoneMetricOut(BaseModel):
@@ -167,6 +169,7 @@ def list_occurrences(
 def list_cameras(
     org_id: Annotated[UUID, Depends(_org(Permission.CAMERAS_READ))], session: SessionDep
 ) -> list[CameraOut]:
+    active = active_services(session, org_id)
     rows = session.execute(
         select(Camera, Agent.last_seen_at)
         .join(Agent, Agent.id == Camera.agent_id)
@@ -182,6 +185,7 @@ def list_cameras(
             last_frame_at=camera.last_frame_at,
             last_status_at=camera.last_status_at,
             agent_last_seen_at=last_seen,
+            services=sorted(active.get(camera.id, set())),
         )
         for camera, last_seen in rows
     ]

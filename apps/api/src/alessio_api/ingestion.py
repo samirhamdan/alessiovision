@@ -25,6 +25,7 @@ from alessio_api.models import (
     Zone,
     ZoneMetric1m,
 )
+from alessio_api.services import camera_has
 from alessio_contracts import (
     AgentMessage,
     BatchResult,
@@ -121,6 +122,8 @@ def _opened(session: Session, agent: Agent, message: OccurrenceOpenedMessage) ->
     p = message.payload
     camera = _camera(session, agent, p.camera_id)
     _zone(session, camera, p.zone_id)
+    if not camera_has(session, camera, "security"):
+        raise Rejected(f"câmera {camera.id} sem Vision Segurança ativo")
     rule = session.scalar(
         select(EventRule).where(
             EventRule.id == p.rule_id,
@@ -182,6 +185,8 @@ def _zone_metrics(session: Session, agent: Agent, message: ZoneMetricsMessage) -
     p = message.payload
     camera = _camera(session, agent, p.camera_id)
     _zone(session, camera, p.zone_id)
+    if not camera_has(session, camera, "operation"):
+        raise Rejected(f"câmera {camera.id} sem Vision Operação ativo")
     stmt = insert(ZoneMetric1m).values(
         zone_id=p.zone_id,
         bucket_start=p.bucket_start,

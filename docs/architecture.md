@@ -213,6 +213,32 @@ ocioso ──presença fora do horário──▶ pendente ──duração mínim
 - Fora por enquanto: manutenção e chamados, anexos (contrato e termo de
   entrega em PDF) e a cobrança em si.
 
+### R2. Contratação: comodato e serviço Vision por câmera
+
+- Um cliente contrata **equipamento em comodato** (R1), **serviço Vision**, ou
+  os dois. Comodato sem serviço é permitido. Tudo fica no **mesmo contrato**
+  (tabela `contracts`; o comodato da R1 foi migrado para ela sem perda).
+- O serviço é **por câmera**, em duas modalidades independentes: **Vision
+  Segurança** (regras e ocorrências) e **Vision Operação** (métricas de
+  ocupação). Uma câmera pode estar sem Vision, com uma ou com as duas.
+- **Valor negociado**: a equipe Alessio digita o valor mensal de cada serviço.
+  Mensalidade do cliente = serviços ativos + comodato em uso (exibida; a
+  cobrança ainda não está no sistema).
+- **Teste grátis de 3 dias** (`ALESSIO_TRIAL_DAYS`), liberado pela equipe
+  Alessio por câmera e modalidade, **uma vez só**. Contratar durante o teste
+  encerra o teste na hora.
+- **O serviço controla o agente**: a configuração enviada ao agente só inclui
+  câmeras com serviço ativo e, em cada uma, só as modalidades ativas. A nuvem
+  também recusa ocorrências de câmera sem Segurança e métricas de câmera sem
+  Operação (o agente pode estar com configuração antiga até reiniciar; a
+  recarga sem reinício é da Fase 2).
+- Encerrar o contrato encerra os serviços dele no último dia do contrato
+  (fuso do local da câmera).
+- **Fim do serviço, decisão pendente.** Implementado: no fim, o agente para de
+  analisar e o histórico continua visível. Proposta em avaliação: 30 dias de
+  consulta só leitura, depois o histórico some do painel e é apagado 60 dias
+  depois (LGPD), recuperável se o cliente renovar dentro de 90 dias.
+
 ## 7. Plano de fases
 
 | Fase | Escopo | Situação |

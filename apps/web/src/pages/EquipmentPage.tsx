@@ -1,28 +1,37 @@
 import { api } from "../api";
 import { Callout, Panel } from "../ui";
 import { useResource } from "../useResource";
-import { EquipmentTable, SummaryStrip } from "./equipmentShared";
+import { EquipmentTable, ServicesTable, SummaryStrip } from "./equipmentShared";
 
+/** O que o cliente contratou: serviços Vision por câmera e equipamentos (próprios ou em comodato). */
 export function EquipmentPage() {
   const equipment = useResource(api.equipment);
+  const services = useResource(api.services);
+  const error = equipment.error ?? services.error;
   return (
     <>
       <div className="page-heading">
-        <h1 className="page-title text-display">Equipamentos</h1>
+        <h1 className="page-title text-display">Contrato</h1>
         <p className="text-small secondary">
-          O que está instalado na sua operação, seu ou da Alessio em comodato. Para mudanças, fale com a equipe Alessio.
+          Serviços Vision por câmera e equipamentos instalados, seus ou da Alessio em comodato. Para mudanças, fale com
+          a equipe Alessio.
         </p>
       </div>
-      {equipment.error && <Callout tone="danger">Falha ao carregar: {equipment.error}</Callout>}
+      {error && <Callout tone="danger">Falha ao carregar: {error}</Callout>}
+      {equipment.data && services.data && (
+        <Panel title="Resumo">
+          <SummaryStrip summary={equipment.data.summary} servicesMonthly={services.data.services_monthly_cents} />
+        </Panel>
+      )}
+      {services.data && (
+        <Panel title="Serviços Vision por câmera">
+          <ServicesTable overview={services.data} />
+        </Panel>
+      )}
       {equipment.data && (
-        <>
-          <Panel title="Resumo">
-            <SummaryStrip summary={equipment.data.summary} />
-          </Panel>
-          <Panel title="Lista" meta={`${equipment.data.items.length}`}>
-            <EquipmentTable items={equipment.data.items} />
-          </Panel>
-        </>
+        <Panel title="Equipamentos" meta={`${equipment.data.items.length}`}>
+          <EquipmentTable items={equipment.data.items} />
+        </Panel>
       )}
     </>
   );
